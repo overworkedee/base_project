@@ -59,7 +59,7 @@ typedef struct {
  * @return       HW_OK on success, HW_ERR_DEV_NOT_FOUND if chip doesn't
  *               ACK, HW_ERR_PARAM if dev is NULL
  */
-hw_err_t dev_template_init(dev_template_t* dev, bus_i2c_t* bus, uint8_t addr)
+static inline hw_err_t dev_template_init(dev_template_t* dev, bus_i2c_t* bus, uint8_t addr)
 {
     if (!dev || !bus) return HW_ERR_PARAM;
 
