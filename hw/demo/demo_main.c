@@ -9,8 +9,6 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <stddef.h>
 #include "hw/bus/bus_i2c.h"
 #include "hw/dev/dev_template.h"
 #include "hw/hw_error.h"
@@ -36,8 +34,9 @@ static void scan_i2c_bus(const char* device)
     /* Scan 7-bit addresses 0x03–0x77 */
     int found = 0;
     for (uint8_t addr = 0x03; addr <= 0x77; addr++) {
-        /* Send a zero-length write to probe the address */
-        hw_err_t ret = bus_i2c_transfer(bus, addr, NULL, 0, NULL, 0);
+        /* Probe the address with a 1-byte read (standard i2cdetect method) */
+        uint8_t dummy;
+        hw_err_t ret = bus_i2c_read(bus, addr, &dummy, 1);
         if (ret == HW_OK) {
             printf("    Device found at 0x%02x\n", addr);
             found++;
