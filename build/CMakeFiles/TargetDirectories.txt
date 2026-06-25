@@ -1,0 +1,7 @@
+/home/chenchizhao/project/build/CMakeFiles/hello_world.dir
+/home/chenchizhao/project/build/CMakeFiles/edit_cache.dir
+/home/chenchizhao/project/build/CMakeFiles/rebuild_cache.dir
+/home/chenchizhao/project/build/CMakeFiles/list_install_components.dir
+/home/chenchizhao/project/build/CMakeFiles/install.dir
+/home/chenchizhao/project/build/CMakeFiles/install/local.dir
+/home/chenchizhao/project/build/CMakeFiles/install/strip.dir
