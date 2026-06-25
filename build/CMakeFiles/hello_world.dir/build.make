@@ -73,15 +73,15 @@ CMakeFiles/hello_world.dir/user/main.c.o: CMakeFiles/hello_world.dir/flags.make
 CMakeFiles/hello_world.dir/user/main.c.o: ../user/main.c
 CMakeFiles/hello_world.dir/user/main.c.o: CMakeFiles/hello_world.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/chenchizhao/project/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/hello_world.dir/user/main.c.o"
-	aarch64-none-linux-gnu-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/hello_world.dir/user/main.c.o -MF CMakeFiles/hello_world.dir/user/main.c.o.d -o CMakeFiles/hello_world.dir/user/main.c.o -c /home/chenchizhao/project/user/main.c
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/hello_world.dir/user/main.c.o -MF CMakeFiles/hello_world.dir/user/main.c.o.d -o CMakeFiles/hello_world.dir/user/main.c.o -c /home/chenchizhao/project/user/main.c
 
 CMakeFiles/hello_world.dir/user/main.c.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing C source to CMakeFiles/hello_world.dir/user/main.c.i"
-	aarch64-none-linux-gnu-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/chenchizhao/project/user/main.c > CMakeFiles/hello_world.dir/user/main.c.i
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/chenchizhao/project/user/main.c > CMakeFiles/hello_world.dir/user/main.c.i
 
 CMakeFiles/hello_world.dir/user/main.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling C source to assembly CMakeFiles/hello_world.dir/user/main.c.s"
-	aarch64-none-linux-gnu-gcc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/chenchizhao/project/user/main.c -o CMakeFiles/hello_world.dir/user/main.c.s
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/chenchizhao/project/user/main.c -o CMakeFiles/hello_world.dir/user/main.c.s
 
 # Object files for target hello_world
 hello_world_OBJECTS = \

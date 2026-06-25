@@ -11,7 +11,7 @@ typedef enum {
     HW_ERR_BUS_TRANSFER,      /* 传输失败 */
     HW_ERR_DEV_ADDR,          /* 设备地址无效 */
     HW_ERR_DEV_NOT_FOUND,     /* 设备无响应 */
-    HW_ERR_MUTEX_INIT,        /* 锁初始化失败 */
+    HW_ERR_MUTEX,             /* 互斥锁操作失败 */
     HW_ERR_PARAM,             /* 参数非法 */
 } hw_err_t;
 
