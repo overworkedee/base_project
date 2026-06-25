@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(aarch64-none-linux-gnu-gcc -c ../hw/src/hw_error.c -o /tmp/hw_error.o -I ../hw/include)",
-      "Bash(aarch64-none-linux-gnu-gcc -c ../hw/src/hw_mutex.c -o /tmp/hw_mutex.o -I ../hw/include)",
-      "Bash(rm -f /tmp/hw_error.o /tmp/hw_mutex.o)"
-    ]
-  }
-}
