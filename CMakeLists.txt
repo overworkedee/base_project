@@ -16,10 +16,14 @@ include_directories(${PROJECT_SOURCE_DIR}/user)
 # Library search paths
 link_directories(${PROJECT_SOURCE_DIR}/part)
 
+# HW IO library
+add_subdirectory(${PROJECT_SOURCE_DIR}/hw)
+
 # Add executable
 add_executable(hello_world
     ${PROJECT_SOURCE_DIR}/user/main.c
 )
+target_link_libraries(hello_world hw)
 
 # Install
 install(TARGETS hello_world DESTINATION ${INSTALL_DIR}/bin)
