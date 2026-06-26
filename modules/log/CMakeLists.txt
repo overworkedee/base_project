@@ -11,7 +11,7 @@ set(LOG_HEADERS
 # 静态库 liblog.a
 add_library(log STATIC ${LOG_SOURCES} ${LOG_HEADERS})
 target_include_directories(log PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(log PRIVATE hw pthread)
+target_link_libraries(log PUBLIC hw PRIVATE pthread)
 
 # 单元测试（host 编译，非交叉编译）
 if(NOT CMAKE_CROSSCOMPILING)

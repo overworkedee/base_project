@@ -22,7 +22,7 @@ static struct {
     log_level_t     min_level;  /* 运行时最低输出等级             */
     hw_mutex_t      lock;       /* 互斥锁                         */
     _Bool           initialized;/* 是否已初始化                   */
-} g_log = { NULL, LOG_INFO, PTHREAD_MUTEX_INITIALIZER, 0 };
+} g_log = { NULL, LOG_INFO, {{0}}, 0 };
 
 /* -- 内部函数 ------------------------------------------------------ */
 
@@ -81,16 +81,27 @@ hw_err_t log_init(const char* file_path, log_level_t min_level)
 {
     if (!file_path) return HW_ERR_PARAM;
 
-    /* 如果已初始化，先关闭旧文件 */
-    if (g_log.initialized) {
-        log_deinit();
-    }
-
     hw_err_t ret = hw_mutex_init(&g_log.lock);
     if (ret != HW_OK) return ret;
 
+    /* 持锁检查是否已初始化 */
+    ret = hw_mutex_lock(&g_log.lock);
+    if (ret != HW_OK) return ret;
+
+    if (g_log.initialized) {
+        /* 在锁内先清理旧实例 */
+        hw_mutex_unlock(&g_log.lock);
+        log_deinit();
+        /* log_deinit 销毁了旧的锁，重新初始化 */
+        ret = hw_mutex_init(&g_log.lock);
+        if (ret != HW_OK) return ret;
+        ret = hw_mutex_lock(&g_log.lock);
+        if (ret != HW_OK) return ret;
+    }
+
     g_log.fp = fopen(file_path, "a");
     if (!g_log.fp) {
+        hw_mutex_unlock(&g_log.lock);
         hw_mutex_destroy(&g_log.lock);
         return HW_ERR_BUS_OPEN;
     }
@@ -102,6 +113,8 @@ hw_err_t log_init(const char* file_path, log_level_t min_level)
 
     g_log.min_level  = min_level;
     g_log.initialized = 1;
+
+    hw_mutex_unlock(&g_log.lock);
 
     LOG_INFO("===== log module initialized, level=%d =====", min_level);
     return HW_OK;
@@ -192,8 +205,8 @@ void log_write_impl(log_level_t level, const char* file, int line,
     _make_timestamp(time_buf, sizeof(time_buf));
 
     /* 从完整路径中提取文件名（仅取最后一段） */
-    const char* fname = strrchr(file, '/');
-    fname = fname ? fname + 1 : file;
+    const char* fname = file ? strrchr(file, '/') : NULL;
+    fname = fname ? fname + 1 : (file ? file : "???");
 
     hw_err_t ret = hw_mutex_lock(&g_log.lock);
     if (ret != HW_OK) {

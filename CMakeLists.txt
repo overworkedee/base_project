@@ -17,6 +17,9 @@ include_directories(${PROJECT_SOURCE_DIR}/hw/include)
 # Library search paths
 link_directories(${PROJECT_SOURCE_DIR}/part)
 
+# CTest
+enable_testing()
+
 # HW IO library
 add_subdirectory(${PROJECT_SOURCE_DIR}/hw)
 

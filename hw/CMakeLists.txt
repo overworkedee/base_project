@@ -31,7 +31,6 @@ if(HW_BUILD_DEMO)
 endif()
 
 # Tests
-enable_testing()
 add_executable(test_bus_i2c ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_bus_i2c.c)
 target_link_libraries(test_bus_i2c hw)
 add_test(NAME test_bus_i2c COMMAND test_bus_i2c)

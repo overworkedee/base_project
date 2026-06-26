@@ -42,3 +42,25 @@ This is a cross-compiled C project targeting the **Orange Pi 5 Plus** (Rockchip 
 ### Adding new sources
 
 Add `.c` files to `user/` and list them in `CMakeLists.txt` under `add_executable()`. For additional libraries, place `.so`/`.a` files in `part/` and add `-l<name>` via `target_link_libraries()` in CMakeLists.txt.
+
+## Coding Convention
+
+所有函数使用中文注释，遵循统一格式：
+
+```c
+/**
+ * 简短描述函数的功能（做什么，一句话）
+ *
+ * @param param1  参数1的含义和约束（可为NULL？取值范围？）
+ * @param param2  参数2的含义和约束
+ * @return        返回值含义（NULL表示什么？错误码含义？）
+ * @note          特殊注意事项、副作用、线程安全性等（可选）
+ */
+hw_err_t some_function(int param1, void* param2);
+```
+
+要点：
+- 每个 `.h` 中的公开函数必须有完整注释
+- `.c` 中的内部函数至少写一行 `/* 内部：xxx */`
+- 参数和返回值必须说清楚，不能用含糊描述
+- `@note` 用于标注线程安全、可重入、副作用等关键信息

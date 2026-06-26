@@ -45,6 +45,8 @@ void log_set_level(log_level_t level);
  * 关闭日志模块，刷新缓冲区并关闭日志文件。
  *
  * 程序退出前调用。重复调用安全。
+ *
+ * @note 先持有锁再执行清理，与 log_write_impl 互斥
  */
 void log_deinit(void);
 
