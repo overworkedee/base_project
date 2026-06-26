@@ -119,6 +119,7 @@ void log_set_level(log_level_t level)
     hw_err_t ret = hw_mutex_lock(&g_log.lock);
     if (ret != HW_OK) {
         fprintf(stderr, "log: hw_mutex_lock failed in log_set_level\n");
+        return;
     }
     g_log.min_level = level;
     ret = hw_mutex_unlock(&g_log.lock);
