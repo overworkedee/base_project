@@ -12,12 +12,23 @@ endif()
 
 # Include directories
 include_directories(${PROJECT_SOURCE_DIR}/user)
+include_directories(${PROJECT_SOURCE_DIR}/hw/include)
 
 # Library search paths
 link_directories(${PROJECT_SOURCE_DIR}/part)
 
 # HW IO library
 add_subdirectory(${PROJECT_SOURCE_DIR}/hw)
+
+# 日志 DEBUG 等级编译期裁剪（由 env 文件控制）
+if(DEFINED ENV{LOG_ENABLE_DEBUG} AND $ENV{LOG_ENABLE_DEBUG} EQUAL 0)
+    add_definitions(-DLOG_ENABLE_DEBUG=0)
+else()
+    add_definitions(-DLOG_ENABLE_DEBUG=1)
+endif()
+
+# Modules 目录
+add_subdirectory(${PROJECT_SOURCE_DIR}/modules)
 
 # Add executable
 add_executable(hello_world
