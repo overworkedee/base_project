@@ -20,6 +20,8 @@ if(NOT CMAKE_CROSSCOMPILING)
     add_test(NAME test_log COMMAND test_log)
 endif()
 
-# Demo
-add_executable(log_demo ${CMAKE_CURRENT_SOURCE_DIR}/demo/log_demo.c)
-target_link_libraries(log_demo log)
+# Demo（由 env LOG_BUILD_DEMO 控制）
+if(LOG_DEMO_ENABLED)
+    add_executable(log_demo ${CMAKE_CURRENT_SOURCE_DIR}/demo/log_demo.c)
+    target_link_libraries(log_demo log)
+endif()

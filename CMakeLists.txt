@@ -23,12 +23,18 @@ enable_testing()
 # HW IO library
 add_subdirectory(${PROJECT_SOURCE_DIR}/hw)
 
-# 日志 DEBUG 等级编译期裁剪（由 env 文件控制）
-if(DEFINED ENV{LOG_ENABLE_DEBUG} AND $ENV{LOG_ENABLE_DEBUG} EQUAL 0)
-    add_definitions(-DLOG_ENABLE_DEBUG=0)
-else()
-    add_definitions(-DLOG_ENABLE_DEBUG=1)
+# 日志编译控制（由 env 文件控制，未设置时默认启用）
+set(LOG_DEBUG_ENABLED 1)
+if(DEFINED ENV{LOG_ENABLE_DEBUG} AND "$ENV{LOG_ENABLE_DEBUG}" STREQUAL "0")
+    set(LOG_DEBUG_ENABLED 0)
 endif()
+add_definitions(-DLOG_ENABLE_DEBUG=${LOG_DEBUG_ENABLED})
+
+set(LOG_DEMO_ENABLED 1)
+if(DEFINED ENV{LOG_BUILD_DEMO} AND "$ENV{LOG_BUILD_DEMO}" STREQUAL "0")
+    set(LOG_DEMO_ENABLED 0)
+endif()
+add_definitions(-DLOG_BUILD_DEMO=${LOG_DEMO_ENABLED})
 
 # Modules 目录
 add_subdirectory(${PROJECT_SOURCE_DIR}/modules)

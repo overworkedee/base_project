@@ -2,11 +2,12 @@
  * log_demo.c — 日志模块使用示例
  *
  * 演示四种日志等级的使用方式和输出格式。
+ * 由 env LOG_BUILD_DEMO=1/0 和 CMake 控制是否编译。
  */
-#include "log/log.h"
+#if LOG_BUILD_DEMO
 
+#include "log/log.h"
 #include <stdio.h>
-#include <unistd.h>
 
 int main(void)
 {
@@ -51,3 +52,5 @@ int main(void)
     log_deinit();
     return 0;
 }
+
+#endif /* LOG_BUILD_DEMO */
