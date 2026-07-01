@@ -47,7 +47,10 @@ static hw_err_t led_write_sysfs(const char* path, const char* value)
         fclose(f);
         return HW_ERR_IO;
     }
-    fclose(f);
+    if (fclose(f) != 0) {
+        fprintf(stderr, "[hw:led] fclose(%s) failed: %s\n", path, strerror(errno));
+        return HW_ERR_IO;
+    }
     return HW_OK;
 }
 
