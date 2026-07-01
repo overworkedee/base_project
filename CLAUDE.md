@@ -39,6 +39,36 @@ This is a cross-compiled C project targeting the **Orange Pi 5 Plus** (Rockchip 
 2. `build.sh` clears CMake cache, runs `cmake ..`, then `make`
 3. `CMakeLists.txt` reads `$CROSS_COMPILE` from the environment to select the cross-compiler; falls back to the host compiler if unset
 
+### HW IO Framework
+
+The `hw/` directory provides a hardware abstraction library (`libhw`), cross-compiled for RK3588.
+
+**Modules:**
+- `hw/src/bus/bus_i2c.c` — I2C bus driver (thread-safe, mutex-protected)
+- `hw/src/dev/dev_led.c` — LED control via sysfs (`/sys/class/leds/<name>/`), supports on/off and heartbeat/none trigger
+- `hw/src/hw_mutex.c` — pthread mutex wrapper
+- `hw/src/hw_error.c` — unified error code strings
+
+**HW Test Demo** — interactive CLI for board-level hardware testing:
+
+```bash
+# Build with demo enabled
+cmake -DHW_BUILD_DEMO=ON ..
+make -j$(nproc)
+
+# Run the interactive test program
+./hw/hw_demo
+```
+
+Demo commands (type `help` after launch for full list):
+```
+hw> led on          # Turn on blue_led
+hw> led off         # Turn off blue_led
+hw> led heartbeat   # Heartbeat blink
+hw> i2c scan        # Scan /dev/i2c-0 through /dev/i2c-6
+hw> quit            # Exit
+```
+
 ### Adding new sources
 
 Add `.c` files to `user/` and list them in `CMakeLists.txt` under `add_executable()`. For additional libraries, place `.so`/`.a` files in `part/` and add `-l<name>` via `target_link_libraries()` in CMakeLists.txt.
