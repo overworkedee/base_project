@@ -1,7 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
 
-# Build option: demo
-option(HW_BUILD_DEMO "Build hardware demo program" OFF)
+# Build option: demo（由 env 文件控制，未设置时默认关闭）
+set(HW_BUILD_DEMO_DEFAULT OFF)
+if(DEFINED ENV{HW_BUILD_DEMO} AND "$ENV{HW_BUILD_DEMO}" STREQUAL "1")
+    set(HW_BUILD_DEMO_DEFAULT ON)
+endif()
+option(HW_BUILD_DEMO "Build hardware demo program" ${HW_BUILD_DEMO_DEFAULT})
 
 # Collect bus sources
 set(HW_SOURCES
