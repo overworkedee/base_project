@@ -10,6 +10,7 @@ const char* hw_err_str(hw_err_t err)
     case HW_ERR_DEV_NOT_FOUND: return "Device not found (no ACK)";
     case HW_ERR_MUTEX:    return "Mutex operation failed";
     case HW_ERR_PARAM:         return "Invalid parameter";
+    case HW_ERR_IO:            return "IO operation failed";
     default:                   return "Unknown error";
     }
 }
