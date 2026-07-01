@@ -5,6 +5,9 @@ project(hello_world LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# All executables output to out/bin/
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/out/bin)
+
 # Cross-compilation toolchain
 if(DEFINED ENV{CROSS_COMPILE})
     set(CMAKE_C_COMPILER $ENV{CROSS_COMPILE}gcc)
