@@ -8,6 +8,7 @@ set(HW_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hw_error.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/hw_mutex.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bus/bus_i2c.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dev/dev_led.c
 )
 
 # Collect headers (for IDE convenience, not required for build)
@@ -17,6 +18,7 @@ set(HW_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/hw/hw_mutex.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/hw/bus/bus_i2c.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/hw/dev/dev_template.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/hw/dev/dev_led.h
 )
 
 # Static library
@@ -34,3 +36,4 @@ endif()
 add_executable(test_bus_i2c ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_bus_i2c.c)
 target_link_libraries(test_bus_i2c hw)
 add_test(NAME test_bus_i2c COMMAND test_bus_i2c)
+
