@@ -264,10 +264,11 @@ hw_err_t hw_mutex_destroy(hw_mutex_t* mutex)
 - [ ] **Step 6: Quick compile check (no link yet)**
 
 ```bash
+source /home/chenchizhao/project/env/rk3588_product_orangerpi5plus.env
 cd /home/chenchizhao/project/build
 # Manually compile source files to check syntax
-aarch64-none-linux-gnu-gcc -c ../hw/src/hw_error.c -o /tmp/hw_error.o -I ../hw/include
-aarch64-none-linux-gnu-gcc -c ../hw/src/hw_mutex.c -o /tmp/hw_mutex.o -I ../hw/include
+${CROSS_COMPILE}gcc -c ../hw/src/hw_error.c -o /tmp/hw_error.o -I ../hw/include
+${CROSS_COMPILE}gcc -c ../hw/src/hw_mutex.c -o /tmp/hw_mutex.o -I ../hw/include
 rm -f /tmp/hw_error.o /tmp/hw_mutex.o
 ```
 
@@ -368,12 +369,13 @@ void bus_i2c_close(bus_i2c_t* bus);
 - [ ] **Step 2: Verify header parses**
 
 ```bash
+source /home/chenchizhao/project/env/rk3588_product_orangerpi5plus.env
 echo '#include "hw/bus/bus_i2c.h"
 int main(void) {
     bus_i2c_t* b = bus_i2c_open("/dev/i2c-1");
     if (b) bus_i2c_close(b);
     return 0;
-}' | aarch64-none-linux-gnu-gcc -fsyntax-only -xc -I /home/chenchizhao/project/hw/include -
+}' | ${CROSS_COMPILE}gcc -fsyntax-only -xc -I /home/chenchizhao/project/hw/include -
 ```
 
 Expected: parse success (may warn about unused result, that's fine).
@@ -521,7 +523,7 @@ hw_err_t bus_i2c_read(bus_i2c_t* bus, uint8_t addr,
 ```bash
 source /home/chenchizhao/project/env/rk3588_product_orangerpi5plus.env
 cd /home/chenchizhao/project/build
-aarch64-none-linux-gnu-gcc -c ../hw/src/bus/bus_i2c.c \
+${CROSS_COMPILE}gcc -c ../hw/src/bus/bus_i2c.c \
     -o /tmp/bus_i2c.o \
     -I ../hw/include \
     -Wall -Wextra -std=c11
@@ -978,7 +980,7 @@ int main(void)
 source /home/chenchizhao/project/env/rk3588_product_orangerpi5plus.env
 cd /home/chenchizhao/project/build
 # Manually test compilation (full build integration comes in Task 8)
-aarch64-none-linux-gnu-gcc -std=c11 -Wall -Wextra \
+${CROSS_COMPILE}gcc -std=c11 -Wall -Wextra \
     ../hw/demo/demo_main.c \
     ../hw/src/bus/bus_i2c.c \
     ../hw/src/hw_error.c \
