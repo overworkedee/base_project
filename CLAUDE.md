@@ -69,6 +69,31 @@ hw> i2c scan        # Scan /dev/i2c-0 through /dev/i2c-6
 hw> quit            # Exit
 ```
 
+### Log Module
+
+项目自带日志模块（`liblog`），所有日志输出必须使用该模块，**禁止直接使用 printf/fprintf**。
+
+```c
+#include "log/log.h"
+
+// 初始化（程序启动时调用一次）
+log_init("/tmp/app.log", LOG_DEBUG);
+
+// 按等级输出日志，自动捕获文件名/行号/函数名
+LOG_DEBUG("variable x = %d", x);   // 调试，受 LOG_ENABLE_DEBUG 宏控制
+LOG_INFO("service started");       // 正常运行信息
+LOG_WARN("retry count: %d", n);    // 警告
+LOG_ERROR("malloc failed");        // 错误
+
+// 退出前调用
+log_deinit();
+```
+
+**要点：**
+- 线程安全，内部持有互斥锁
+- `LOG_DEBUG` 受编译宏 `LOG_ENABLE_DEBUG`（env 文件）控制，关闭时编译为零开销
+- 日志格式自动包含 `[等级 文件:行号 函数]` 前缀，无需手动拼
+
 ### Adding new sources
 
 Add `.c` files to `user/` and list them in `CMakeLists.txt` under `add_executable()`. For additional libraries, place `.so`/`.a` files in `part/` and add `-l<name>` via `target_link_libraries()` in CMakeLists.txt.
