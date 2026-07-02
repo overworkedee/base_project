@@ -100,6 +100,17 @@ log_deinit();
 
 Add `.c` files to `user/` and list them in `CMakeLists.txt` under `add_executable()`. For additional libraries, place `.so`/`.a` files in `part/` and add `-l<name>` via `target_link_libraries()` in CMakeLists.txt.
 
+## 日志规范
+
+所有 `LOG_DEBUG/INFO/WARN/ERROR` 消息**必须使用英文**，禁止中文。日志可能被远程采集、监控系统解析，中文在嵌入式环境容易乱码。
+
+```c
+LOG_INFO("I2C bus initialized");        // ✅
+LOG_INFO("I2C 总线初始化成功");           // ❌
+```
+
+注释仍然使用中文。
+
 ## Coding Convention
 
 所有函数使用中文注释，遵循统一格式：
