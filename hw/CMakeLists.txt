@@ -36,12 +36,14 @@ if(HW_BUILD_DEMO)
     target_link_libraries(hw_demo hw)
 endif()
 
-# Tests
-add_executable(test_bus_i2c ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_bus_i2c.c)
-target_link_libraries(test_bus_i2c hw)
-add_test(NAME test_bus_i2c COMMAND test_bus_i2c)
+# Tests（由 env BUILD_TESTS 控制）
+if(BUILD_TESTS)
+    add_executable(test_bus_i2c ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_bus_i2c.c)
+    target_link_libraries(test_bus_i2c hw)
+    add_test(NAME test_bus_i2c COMMAND test_bus_i2c)
 
-add_executable(test_dev_led ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_dev_led.c)
-target_link_libraries(test_dev_led hw)
-add_test(NAME test_dev_led COMMAND test_dev_led)
+    add_executable(test_dev_led ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_dev_led.c)
+    target_link_libraries(test_dev_led hw)
+    add_test(NAME test_dev_led COMMAND test_dev_led)
+endif()
 

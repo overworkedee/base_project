@@ -20,8 +20,14 @@ include_directories(${PROJECT_SOURCE_DIR}/hw/include)
 # Library search paths
 link_directories(${PROJECT_SOURCE_DIR}/part)
 
-# CTest
-enable_testing()
+# CTest（由 env 文件 BUILD_TESTS 控制，正式版本默认关闭）
+set(BUILD_TESTS 0)
+if(DEFINED ENV{BUILD_TESTS} AND "$ENV{BUILD_TESTS}" STREQUAL "1")
+    set(BUILD_TESTS 1)
+endif()
+if(BUILD_TESTS)
+    enable_testing()
+endif()
 
 # HW IO library
 add_subdirectory(${PROJECT_SOURCE_DIR}/hw)
