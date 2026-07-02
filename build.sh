@@ -29,4 +29,4 @@ echo "==> Building..."
 make -j$(nproc)
 
 echo "==> Done."
-file $BUILD_DIR/hello_world
+file $PROJECT_DIR/out/bin/project_app

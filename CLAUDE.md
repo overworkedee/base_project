@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**重要：任何涉及构建流程、编译选项、环境变量、输出路径的改动，必须同步更新 README.md。**
+
 ## Build
 
 ```bash
@@ -12,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./build.sh -DCMAKE_BUILD_TYPE=Debug
 ```
 
-The build script sources `env/rk3588_product_orangerpi5plus.env`, configures CMake, and compiles with `make -j$(nproc)`. Output binary is `build/hello_world`.
+The build script sources `env/rk3588_product_orangerpi5plus.env`, configures CMake, and compiles with `make -j$(nproc)`. Output binary is `out/bin/project_app`.
 
 To switch toolchains, set `TOOLCHAIN_PATH` before running the build script:
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(hello_world LANGUAGES C)
+project(project_app LANGUAGES C)
 
 # Set C standard
 set(CMAKE_C_STANDARD 11)
@@ -49,10 +49,10 @@ add_definitions(-DLOG_BUILD_DEMO=${LOG_DEMO_ENABLED})
 add_subdirectory(${PROJECT_SOURCE_DIR}/modules)
 
 # Add executable
-add_executable(hello_world
+add_executable(project_app
     ${PROJECT_SOURCE_DIR}/user/main.c
 )
-target_link_libraries(hello_world hw)
+target_link_libraries(project_app hw)
 
 # Install
-install(TARGETS hello_world DESTINATION ${INSTALL_DIR}/bin)
+install(TARGETS project_app DESTINATION ${INSTALL_DIR}/bin)
