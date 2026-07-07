@@ -30,3 +30,7 @@ make -j$(nproc)
 
 echo "==> Done."
 file $PROJECT_DIR/out/bin/project_app
+
+# 7. Deploy to Orange Pi
+echo "==> Deploying to Orange Pi..."
+scp $PROJECT_DIR/out/bin/project_app orangepi@192.168.3.171:~

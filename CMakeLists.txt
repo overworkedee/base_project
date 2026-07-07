@@ -16,6 +16,7 @@ endif()
 # Include directories
 include_directories(${PROJECT_SOURCE_DIR}/user)
 include_directories(${PROJECT_SOURCE_DIR}/hw/include)
+include_directories(${PROJECT_SOURCE_DIR}/modules/log/include)
 
 # Library search paths
 link_directories(${PROJECT_SOURCE_DIR}/part)
@@ -51,8 +52,9 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/modules)
 # Add executable
 add_executable(project_app
     ${PROJECT_SOURCE_DIR}/user/main.c
+    ${PROJECT_SOURCE_DIR}/user/app_signal.c
 )
-target_link_libraries(project_app hw)
+target_link_libraries(project_app hw log)
 
 # Install
 install(TARGETS project_app DESTINATION ${INSTALL_DIR}/bin)

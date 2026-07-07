@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **重要：任何涉及构建流程、编译选项、环境变量、输出路径的改动，必须同步更新 README.md。**
 
+**交流语言：所有对话使用中文。**
+
 ## Build
 
 ```bash
