@@ -180,7 +180,7 @@ static void _accept_conn(cmd_server_t* s, int listen_fd)
     /* 加入 epoll */
     struct epoll_event ev;
     memset(&ev, 0, sizeof(ev));
-    ev.events   = EPOLLIN | EPOLLET;  /* 边缘触发 */
+    ev.events   = EPOLLIN;
     ev.data.ptr = conn;
 
     if (epoll_ctl(s->epoll_fd, EPOLL_CTL_ADD, fd, &ev) < 0) {
@@ -292,8 +292,10 @@ static void _process_rx(cmd_server_t* s, cmd_conn_t* conn)
 
 /**
  * 内部：从连接读取数据追加到 rx_buf。
+ *
+ * @return 0 连接仍活跃，1 连接已被关闭（调用者不应再访问 conn）
  */
-static void _handle_read(cmd_server_t* s, cmd_conn_t* conn)
+static int _handle_read(cmd_server_t* s, cmd_conn_t* conn)
 {
     size_t space = RX_BUF_SIZE - conn->rx_len;
     if (space == 0) {
@@ -306,12 +308,16 @@ static void _handle_read(cmd_server_t* s, cmd_conn_t* conn)
         conn->rx_len += (size_t)n;
         conn->last_active = _now();
         _process_rx(s, conn);
+        return 0;
     } else if (n == 0) {
         _close_conn(s, conn);
+        return 1;
     } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
         LOG_DEBUG("Read error on fd=%d: %s", conn->fd, strerror(errno));
         _close_conn(s, conn);
+        return 1;
     }
+    return 0;
 }
 
 /**
@@ -329,6 +335,15 @@ static void _handle_write(cmd_server_t* s, cmd_conn_t* conn)
         if (n > 0) {
             node->sent += (size_t)n;
             conn->last_active = _now();
+        } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            /* 发送缓冲区满，等下次 EPOLLOUT */
+            break;
+        } else if (n < 0) {
+            /* 写错误，关闭连接 */
+            LOG_DEBUG("Write error on fd=%d: %s", conn->fd, strerror(errno));
+            hw_mutex_unlock(&conn->tx_lock);
+            _close_conn(s, conn);
+            return;
         }
 
         if (node->sent >= node->len) {
@@ -398,31 +413,32 @@ int cmd_server_run(cmd_server_t* s)
         }
 
         for (int i = 0; i < nfds; i++) {
-            /* 监听 fd: 新连接 */
-            if (events[i].events & EPOLLIN) {
-                int fd = events[i].data.fd;
-                int is_listener = 0;
-                for (int j = 0; j < s->listener_count; j++) {
-                    if (s->listener_fds[j] == fd) { is_listener = 1; break; }
-                }
+            uint32_t ev = events[i].events;
 
-                if (is_listener) {
-                    _accept_conn(s, fd);
-                } else {
-                    cmd_conn_t* conn = (cmd_conn_t*)events[i].data.ptr;
-                    _handle_read(s, conn);
-                }
+            /* 区分监听 fd 和连接 fd：监听 fd 通过 data.fd 识别 */
+            int fd = events[i].data.fd;
+            int is_listener = 0;
+            for (int j = 0; j < s->listener_count; j++) {
+                if (s->listener_fds[j] == fd) { is_listener = 1; break; }
             }
 
-            /* 连接 fd: 可写 */
-            if (events[i].events & EPOLLOUT) {
-                cmd_conn_t* conn = (cmd_conn_t*)events[i].data.ptr;
+            if (is_listener) {
+                /* 监听 fd：仅处理 EPOLLIN */
+                if (ev & EPOLLIN) _accept_conn(s, fd);
+                continue;
+            }
+
+            /* 连接 fd：统一处理该 fd 的所有事件，关闭后跳过 */
+            cmd_conn_t* conn = (cmd_conn_t*)events[i].data.ptr;
+            int closed = 0;
+
+            if (ev & EPOLLIN) {
+                closed = _handle_read(s, conn);
+            }
+            if (!closed && (ev & EPOLLOUT)) {
                 _handle_write(s, conn);
             }
-
-            /* 连接 fd: 错误/挂断 */
-            if (events[i].events & (EPOLLERR | EPOLLHUP)) {
-                cmd_conn_t* conn = (cmd_conn_t*)events[i].data.ptr;
+            if (!closed && (ev & (EPOLLERR | EPOLLHUP))) {
                 LOG_DEBUG("Socket error/hangup on fd=%d", conn->fd);
                 _close_conn(s, conn);
             }
@@ -482,7 +498,7 @@ int cmd_conn_send(cmd_conn_t* conn, const cmd_frame_t* frame)
     if (was_empty && conn->epoll_fd >= 0) {
         struct epoll_event ev;
         memset(&ev, 0, sizeof(ev));
-        ev.events   = EPOLLIN | EPOLLOUT | EPOLLET;
+        ev.events   = EPOLLIN | EPOLLOUT;
         ev.data.ptr = conn;
         epoll_ctl(conn->epoll_fd, EPOLL_CTL_MOD, conn->fd, &ev);
     }

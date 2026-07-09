@@ -30,7 +30,13 @@ void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 
         /* PAYLOAD = [err 1B, version_str N B] */
         uint8_t* pld = (uint8_t*)malloc(1 + ver_len);
-        if (!pld) return;
+        if (!pld) {
+            uint8_t err = CMD_ERR_HARDWARE;
+            cmd_frame_t rsp = { .cmd = CMD_SYSTEM, .sub = cmd_frame_sub_rsp(req->sub),
+                                .len = 1, .payload = &err };
+            cmd_conn_send(conn, &rsp);
+            return;
+        }
 
         pld[0] = CMD_ERR_OK;
         memcpy(pld + 1, ver, ver_len);
@@ -46,7 +52,7 @@ void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 
         LOG_DEBUG("System info requested");
 
-    } else if (op == CMD_SUB_WRITE) {
+    } else if (op == 0x03) {
         /* 设置日志等级: PAYLOAD=[level 1B] */
         if (req->len < 1) {
             uint8_t err = CMD_ERR_PARAM;
