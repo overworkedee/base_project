@@ -31,6 +31,7 @@ export TOOLCHAIN_PATH=/path/to/other/toolchain
 |------|------|------|
 | `HW_BUILD_DEMO` | `0` | 1=编译硬测 CLI demo（`hw_demo`） |
 | `LOG_BUILD_DEMO` | `0` | 1=编译日志 demo（`log_demo`） |
+| `CMD_BUILD_DEMO` | `0` | 1=编译命令模块客户端 demo（`cmd_demo`） |
 | `LOG_ENABLE_DEBUG` | `1` | 1=编译时保留 `LOG_DEBUG`，0=裁剪 |
 | `BUILD_TESTS` | `0` | 1=编译单元测试（test_*），0=不编译 |
 | `TOOLCHAIN_PATH` | `$HOME/orangepi-build/toolchains/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` | 交叉编译工具链路径 |
@@ -68,11 +69,16 @@ project/
 │       ├── test_bus_i2c.c
 │       └── test_dev_led.c
 ├── modules/                       # 通用功能模块
-│   └── log/                       # 日志模块（liblog.a）
-│       ├── include/log/log.h
-│       ├── src/log.c
-│       ├── tests/test_log.c
-│       └── demo/log_demo.c
+│   ├── log/                       # 日志模块（liblog.a）
+│   │   ├── include/log/log.h
+│   │   ├── src/log.c
+│   │   ├── tests/test_log.c
+│   │   └── demo/log_demo.c
+│   └── cmd/                       # 命令模块（libcmd.a）
+│       ├── include/cmd/           # 头文件（frame/protocol/server/dispatcher...）
+│       ├── src/                   # 实现文件
+│       ├── demo/cmd_demo.c        # 交互式命令客户端
+│       └── tests/                 # 测试文件
 ├── part/                          # 第三方 .so/.a 库
 ├── env/                           # 平台环境配置
 │   └── rk3588_product_orangerpi5plus.env
@@ -167,6 +173,38 @@ hw> quit
  */
 hw_err_t some_function(int param1, void* param2);
 ```
+
+### 命令模块 Demo
+
+在开发板上交互式测试命令协议：
+
+```bash
+# 编译（开启 cmd demo）
+CMD_BUILD_DEMO=1 ./build.sh
+
+# 上传并运行主程序
+scp out/bin/project_app root@<IP>:~/
+ssh root@<IP>
+./project_app &
+
+# 上传并运行命令客户端
+scp out/bin/cmd_demo root@<IP>:~/
+./cmd_demo
+
+cmd> connect unix /tmp/cmd.sock
+cmd> led on               # 打开 LED
+cmd> sensor read           # 读取温湿度
+cmd> system info           # 查看系统版本
+cmd> help                  # 查看所有命令
+cmd> quit
+```
+
+也支持 TCP 远程连接：
+```
+cmd> connect tcp 192.168.3.171 9527
+```
+
+命令模块使用二进制帧协议，通过 Unix Socket 和 TCP 双通道，支持手动命令和传感器数据订阅推送。详细设计见 `docs/superpowers/specs/2026-07-09-cmd-module-design.md`。
 
 ## 部署到开发板
 

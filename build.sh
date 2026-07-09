@@ -29,8 +29,26 @@ echo "==> Building..."
 make -j$(nproc)
 
 echo "==> Done."
-file $PROJECT_DIR/out/bin/project_app
+
+# 列出所有编译产物
+echo ""
+echo "=== Build artifacts ==="
+for f in $PROJECT_DIR/out/bin/*; do
+    if [ -f "$f" ]; then
+        file "$f"
+    fi
+done
 
 # 7. Deploy to Orange Pi
+echo ""
 echo "==> Deploying to Orange Pi..."
-scp $PROJECT_DIR/out/bin/project_app orangepi@192.168.3.171:~
+
+# SCP 所有可执行文件
+for f in $PROJECT_DIR/out/bin/*; do
+    if [ -f "$f" ] && [ -x "$f" ]; then
+        echo "  scp $f ..."
+        scp "$f" orangepi@192.168.3.171:~
+    fi
+done
+
+echo "==> Deploy complete."

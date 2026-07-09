@@ -59,6 +59,7 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/modules)
 add_executable(project_app
     ${PROJECT_SOURCE_DIR}/user/main.c
     ${PROJECT_SOURCE_DIR}/user/app_signal.c
+    ${PROJECT_SOURCE_DIR}/user/app_cmd.c
 )
 target_link_libraries(project_app hw log cmd)
 
