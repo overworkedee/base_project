@@ -119,8 +119,8 @@ int cmd_subscription_add(cmd_subscription_mgr_t* mgr, uint16_t data_id,
             if (sn->conn == conn) {
                 sn->interval_ms = interval_ms;  /* 更新间隔 */
                 hw_mutex_unlock(&mgr->lock);
-                LOG_DEBUG("Subscription updated: data_id=0x%04X fd=%d interval=%ums",
-                          data_id, conn->fd, interval_ms);
+                LOG_DEBUG("Subscription updated: data_id=0x%04X interval=%ums",
+                          data_id, interval_ms);
                 return 0;
             }
             sn = sn->next;
@@ -145,8 +145,8 @@ int cmd_subscription_add(cmd_subscription_mgr_t* mgr, uint16_t data_id,
     ds->subs_head = sn;
 
     hw_mutex_unlock(&mgr->lock);
-    LOG_DEBUG("Subscription added: data_id=0x%04X fd=%d interval=%ums",
-              data_id, conn->fd, interval_ms);
+    LOG_DEBUG("Subscription added: data_id=0x%04X interval=%ums",
+              data_id, interval_ms);
     return 0;
 }
 
@@ -168,7 +168,7 @@ int cmd_subscription_remove(cmd_subscription_mgr_t* mgr, uint16_t data_id,
             else ds->subs_head = sn->next;
             free(sn);
             hw_mutex_unlock(&mgr->lock);
-            LOG_DEBUG("Subscription removed: data_id=0x%04X fd=%d", data_id, conn->fd);
+            LOG_DEBUG("Subscription removed: data_id=0x%04X", data_id);
             return 0;
         }
         prev = sn;

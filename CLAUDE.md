@@ -33,6 +33,7 @@ This is a cross-compiled C project targeting the **Orange Pi 5 Plus** (Rockchip 
 
 - **`user/`** — Application source code. Entry point is `main.c`.
 - **`part/`** — Third-party prebuilt libraries (`.so`/`.a`). Linked via `link_directories()` in CMakeLists.txt. Currently empty.
+  - **规则：项目使用的第三方工具、库，必须下载到 `part/` 目录下进行交叉编译和链接。如果是开发板运行时依赖（无法交叉编译的系统库），直接告知我在开发板上用 `apt` 安装。**
 - **`env/`** — Platform environment files. Source one to set up `CROSS_COMPILE`, `PATH`, `ARCH`, and other build variables.
 - **`toolchain`** — Symlink to the ARM cross-compilation toolchain. Note: the env file uses its own hardcoded `TOOLCHAIN_PATH` (`$HOME/orangepi-build/toolchains/...`) and does **not** reference this symlink. The symlink is for convenience/documentation only.
 - **`build/`** — CMake build directory (auto-created).
