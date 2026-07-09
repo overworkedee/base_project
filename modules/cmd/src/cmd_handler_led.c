@@ -13,8 +13,6 @@
 #include "cmd/cmd_dispatcher.h"
 #include "cmd/cmd_server.h"
 #include "cmd/cmd_protocol.h"
-#include "cmd/cmd_subscription.h"
-#include "cmd/cmd_handler_ctx.h"
 #include "hw/dev/dev_led.h"
 #include "log/log.h"
 
@@ -22,8 +20,8 @@
 
 void cmd_handler_led(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 {
-    cmd_handler_ctx_t* hctx = (cmd_handler_ctx_t*)ctx;
-    if (!hctx || !hctx->led) {
+    led_t* led = (led_t*)ctx;
+    if (!led) {
         /* 无 LED 硬件，返回错误 */
         uint8_t err = CMD_ERR_HARDWARE;
         cmd_frame_t rsp = { .cmd = CMD_LED, .sub = cmd_frame_sub_rsp(req->sub),
@@ -49,9 +47,9 @@ void cmd_handler_led(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
         hw_err_t ret;
 
         if (state) {
-            ret = led_on(hctx->led);
+            ret = led_on(led);
         } else {
-            ret = led_off(hctx->led);
+            ret = led_off(led);
         }
 
         uint8_t rsp_pld[3];
@@ -77,7 +75,7 @@ void cmd_handler_led(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 
         uint8_t led_id = req->payload[0];
         int brightness = 0;
-        hw_err_t ret = led_get_brightness(hctx->led, &brightness);
+        hw_err_t ret = led_get_brightness(led, &brightness);
 
         uint8_t rsp_pld[3];
         rsp_pld[0] = (ret == HW_OK) ? CMD_ERR_OK : CMD_ERR_HARDWARE;

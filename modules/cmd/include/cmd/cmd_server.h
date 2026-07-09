@@ -16,10 +16,12 @@ typedef struct cmd_server cmd_server_t;
  *
  * 当服务器收到完整帧时调用此回调。回调内可以调用 cmd_conn_send 发送响应。
  *
- * @param req   请求帧（只读，调用结束后 server 会释放）
- * @param conn  来源连接
+ * @param req       请求帧（只读，调用结束后 server 会释放）
+ * @param conn      来源连接
+ * @param user_data 注册回调时传入的用户数据
  */
-typedef void (*cmd_request_fn)(const cmd_frame_t* req, cmd_conn_t* conn);
+typedef void (*cmd_request_fn)(const cmd_frame_t* req, cmd_conn_t* conn,
+                               void* user_data);
 
 /* ── 服务器生命周期 ─────────────────────────────────────────────────── */
 
@@ -53,10 +55,11 @@ int cmd_server_add_listener(cmd_server_t* s, int listen_fd);
 /**
  * 设置请求处理器回调。
  *
- * @param s       服务器实例
- * @param fn      回调函数，收到完整帧时调用
+ * @param s         服务器实例
+ * @param fn        回调函数，收到完整帧时调用
+ * @param user_data 透明用户数据，回调时原样传入
  */
-void cmd_server_set_handler(cmd_server_t* s, cmd_request_fn fn);
+void cmd_server_set_handler(cmd_server_t* s, cmd_request_fn fn, void* user_data);
 
 /* ── 事件循环 ───────────────────────────────────────────────────────── */
 
@@ -102,24 +105,6 @@ int cmd_conn_send(cmd_conn_t* conn, const cmd_frame_t* frame);
  * @param conn  待关闭的连接
  */
 void cmd_conn_close(cmd_server_t* s, cmd_conn_t* conn);
-
-/**
- * 获取连接关联的用户上下文指针。
- *
- * 允许 handler 和 subscription 层在连接上挂载私有数据。
- *
- * @param conn  连接
- * @return      当前上下文指针（初始为 NULL）
- */
-void* cmd_conn_get_ctx(cmd_conn_t* conn);
-
-/**
- * 设置连接关联的用户上下文指针。
- *
- * @param conn  连接
- * @param ctx   上下文指针
- */
-void cmd_conn_set_ctx(cmd_conn_t* conn, void* ctx);
 
 #ifdef __cplusplus
 }

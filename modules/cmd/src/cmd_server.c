@@ -50,7 +50,6 @@ typedef struct cmd_conn {
 
     int                 epoll_fd;               /* 所属 epoll 实例（用于 EPOLLOUT 注册）    */
     time_t              last_active;            /* 最后活跃时间戳                         */
-    void*               ctx;                    /* 用户上下文指针                         */
 
     struct cmd_conn*    next;                   /* 服务器连接链表指针                     */
 } cmd_conn_t;
@@ -66,6 +65,7 @@ typedef struct cmd_server {
     int                 conn_count;
 
     cmd_request_fn      handler;                /* 请求回调                                 */
+    void*               handler_data;           /* 回调用户数据                             */
     volatile int        running;                /* 运行标志（cmd_server_stop 写入）          */
 } cmd_server_t;
 
@@ -141,9 +141,9 @@ int cmd_server_add_listener(cmd_server_t* s, int listen_fd)
     return 0;
 }
 
-void cmd_server_set_handler(cmd_server_t* s, cmd_request_fn fn)
+void cmd_server_set_handler(cmd_server_t* s, cmd_request_fn fn, void* user_data)
 {
-    if (s) s->handler = fn;
+    if (s) { s->handler = fn; s->handler_data = user_data; }
 }
 
 /* ── 内部: 接受新连接 ────────────────────────────────────────────────── */
@@ -174,7 +174,6 @@ static void _accept_conn(cmd_server_t* s, int listen_fd)
     conn->tx_head = conn->tx_tail = NULL;
     conn->epoll_fd = s->epoll_fd;
     conn->last_active = _now();
-    conn->ctx = NULL;
     hw_mutex_init(&conn->tx_lock);
 
     /* 加入 epoll */
@@ -267,7 +266,7 @@ static void _process_rx(cmd_server_t* s, cmd_conn_t* conn)
         conn->last_active = _now();
 
         if (s->handler) {
-            s->handler(&frame, conn);
+            s->handler(&frame, conn, s->handler_data);
         } else {
             LOG_WARN("No handler registered, dropping frame cmd=0x%02X", frame.cmd);
         }
@@ -512,12 +511,3 @@ void cmd_conn_close(cmd_server_t* s, cmd_conn_t* conn)
     if (s && conn) _close_conn(s, conn);
 }
 
-void* cmd_conn_get_ctx(cmd_conn_t* conn)
-{
-    return conn ? conn->ctx : NULL;
-}
-
-void cmd_conn_set_ctx(cmd_conn_t* conn, void* ctx)
-{
-    if (conn) conn->ctx = ctx;
-}

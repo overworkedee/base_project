@@ -4,6 +4,7 @@
 #include "hw/dev/dev_sht30.h"
 #include "hw/dev/dev_led.h"
 #include "cmd/cmd_subscription.h"
+#include "cmd/cmd_frame.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -17,18 +18,28 @@
 
 /* ── 全局资源句柄 ───────────────────────────────────────────────────── */
 
+/**
+ * 传感器 handler 上下文。
+ */
+typedef struct {
+    sht30_t*                  sht30;
+    cmd_subscription_mgr_t*   sub_mgr;
+} sensor_ctx_t;
+
 static sht30_t*               g_sht30 = NULL;
 static led_t*                 g_led   = NULL;
 static app_cmd_t*             g_cmd   = NULL;
+static sensor_ctx_t           g_sensor_ctx;  /* sensor handler 上下文（全局生命周期） */
 static volatile int           g_running = 1;
+
+/* ── handler 前向声明 ───────────────────────────────────────────────── */
+
+extern void cmd_handler_led(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx);
+extern void cmd_handler_sensor(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx);
+extern void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx);
 
 /* ── 传感器采集线程 ─────────────────────────────────────────────────── */
 
-/**
- * 传感器工作线程：按固定间隔采集温湿度，推送给所有订阅者。
- *
- * 退出条件：g_running == 0
- */
 static void* sensor_thread(void* arg)
 {
     (void)arg;
@@ -81,7 +92,7 @@ static void cleanup(void)
 {
     LOG_INFO("Shutting down...");
 
-    g_running = 0;  /* 通知传感器线程退出 */
+    g_running = 0;
 
     if (g_cmd) {
         app_cmd_destroy(g_cmd);
@@ -134,12 +145,20 @@ int main(int argc, char *argv[])
     }
 
     /* 初始化命令模块 */
-    g_cmd = app_cmd_create(g_led, g_sht30);
+    g_cmd = app_cmd_create();
     if (!g_cmd) {
         LOG_ERROR("Failed to create command module");
         return 1;
     }
 
+    /* 注册命令处理器（扩展新功能只需增加一行） */
+    app_cmd_register(g_cmd, CMD_LED,    cmd_handler_led,    g_led);
+    g_sensor_ctx.sht30   = g_sht30;
+    g_sensor_ctx.sub_mgr = app_cmd_get_sub_mgr(g_cmd);
+    app_cmd_register(g_cmd, CMD_SENSOR, cmd_handler_sensor, &g_sensor_ctx);
+    app_cmd_register(g_cmd, CMD_SYSTEM, cmd_handler_system, NULL);
+
+    /* 添加监听 */
     app_cmd_add_listener_unix(g_cmd, "/tmp/cmd.sock");
     app_cmd_add_listener_tcp(g_cmd, 9527);
 

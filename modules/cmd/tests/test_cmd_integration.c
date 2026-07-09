@@ -272,8 +272,9 @@ cleanup:
 
 /* ── 服务器回调（桥接 server → dispatcher）─────────────────────────── */
 
-static void on_request(const cmd_frame_t* req, cmd_conn_t* conn)
+static void on_request(const cmd_frame_t* req, cmd_conn_t* conn, void* user_data)
 {
+    (void)user_data;
     cmd_dispatcher_dispatch(g_dispatcher, req, conn);
 }
 
@@ -288,13 +289,13 @@ int main(void)
 
     /* 创建命令模块基础设施 */
     g_sub_mgr = cmd_subscription_create();
-    g_dispatcher = cmd_dispatcher_create(g_sub_mgr, NULL);
-    cmd_dispatcher_register(g_dispatcher, CMD_LED,    mock_handler_led);
-    cmd_dispatcher_register(g_dispatcher, CMD_SYSTEM, mock_handler_system);
+    g_dispatcher = cmd_dispatcher_create(g_sub_mgr);
+    cmd_dispatcher_register(g_dispatcher, CMD_LED,    mock_handler_led,    NULL);
+    cmd_dispatcher_register(g_dispatcher, CMD_SYSTEM, mock_handler_system, NULL);
 
     /* 创建服务器 + 注册监听 */
     g_server = cmd_server_create();
-    cmd_server_set_handler(g_server, on_request);
+    cmd_server_set_handler(g_server, on_request, g_dispatcher);
 
     /* 注意：cmd_server_set_handler 的类型是 cmd_request_fn，需要包装 dispatcher */
     unlink(g_sock_path);

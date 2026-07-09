@@ -18,7 +18,6 @@ set(CMD_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/cmd/cmd_server.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/cmd/cmd_dispatcher.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/cmd/cmd_subscription.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/cmd/cmd_handler_ctx.h
 )
 
 # 静态库 libcmd.a

@@ -14,23 +14,31 @@
 #include "cmd/cmd_server.h"
 #include "cmd/cmd_protocol.h"
 #include "cmd/cmd_subscription.h"
-#include "cmd/cmd_handler_ctx.h"
 #include "hw/dev/dev_sht30.h"
 #include "log/log.h"
 
 #include <string.h>
 #include <arpa/inet.h>  /* ntohs, htonl */
 
+/**
+ * 传感器 handler 专用上下文。
+ */
+typedef struct {
+    sht30_t*                  sht30;
+    cmd_subscription_mgr_t*   sub_mgr;
+} sensor_handler_ctx_t;
+
 void cmd_handler_sensor(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 {
-    cmd_handler_ctx_t* hctx = (cmd_handler_ctx_t*)ctx;
-    cmd_subscription_mgr_t* sub_mgr = hctx ? hctx->sub_mgr : NULL;
+    sensor_handler_ctx_t* sctx = (sensor_handler_ctx_t*)ctx;
+    sht30_t* sht30 = sctx ? sctx->sht30 : NULL;
+    cmd_subscription_mgr_t* sub_mgr = sctx ? sctx->sub_mgr : NULL;
 
     uint8_t op = cmd_frame_sub_req(req->sub);
 
     if (op == CMD_SUB_READ) {
         /* 读一次传感器 */
-        if (!hctx || !hctx->sht30) {
+        if (!sht30) {
             uint8_t err = CMD_ERR_HARDWARE;
             cmd_frame_t rsp = { .cmd = CMD_SENSOR, .sub = cmd_frame_sub_rsp(req->sub),
                                 .len = 1, .payload = &err };
@@ -40,8 +48,8 @@ void cmd_handler_sensor(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 
         float temp_c = 0.0f;
         float humidity = 0.0f;
-        hw_err_t ret_t = sht30_read_temperature(hctx->sht30, &temp_c);
-        hw_err_t ret_h = sht30_read_humidity(hctx->sht30, &humidity);
+        hw_err_t ret_t = sht30_read_temperature(sht30, &temp_c);
+        hw_err_t ret_h = sht30_read_humidity(sht30, &humidity);
 
         if (ret_t != HW_OK && ret_h != HW_OK) {
             uint8_t err = CMD_ERR_HARDWARE;
