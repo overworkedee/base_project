@@ -46,6 +46,12 @@ if(DEFINED ENV{LOG_BUILD_DEMO} AND "$ENV{LOG_BUILD_DEMO}" STREQUAL "0")
 endif()
 add_definitions(-DLOG_BUILD_DEMO=${LOG_DEMO_ENABLED})
 
+set(CMD_DEMO_ENABLED 1)
+if(DEFINED ENV{CMD_BUILD_DEMO} AND "$ENV{CMD_BUILD_DEMO}" STREQUAL "0")
+    set(CMD_DEMO_ENABLED 0)
+endif()
+add_definitions(-DCMD_BUILD_DEMO=${CMD_DEMO_ENABLED})
+
 # Modules 目录
 add_subdirectory(${PROJECT_SOURCE_DIR}/modules)
 

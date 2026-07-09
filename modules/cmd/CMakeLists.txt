@@ -32,3 +32,9 @@ if(BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     target_link_libraries(test_cmd_protocol cmd)
     add_test(NAME test_cmd_protocol COMMAND test_cmd_protocol)
 endif()
+
+# Demo — 交互式命令客户端（由 env CMD_BUILD_DEMO 控制，默认启用）
+if(CMD_DEMO_ENABLED)
+    add_executable(cmd_demo ${CMAKE_CURRENT_SOURCE_DIR}/demo/cmd_demo.c)
+    target_link_libraries(cmd_demo cmd)
+endif()
