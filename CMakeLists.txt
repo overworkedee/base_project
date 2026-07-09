@@ -54,7 +54,7 @@ add_executable(project_app
     ${PROJECT_SOURCE_DIR}/user/main.c
     ${PROJECT_SOURCE_DIR}/user/app_signal.c
 )
-target_link_libraries(project_app hw log)
+target_link_libraries(project_app hw log cmd)
 
 # Install
 install(TARGETS project_app DESTINATION ${INSTALL_DIR}/bin)
