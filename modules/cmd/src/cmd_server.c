@@ -69,12 +69,19 @@ typedef struct cmd_server {
     volatile int        running;                /* 运行标志（cmd_server_stop 写入）          */
 } cmd_server_t;
 
-/* ── 内部辅助：时间戳 ───────────────────────────────────────────────── */
+/* ── 内部：获取当前时间戳 ──────────────────────────────────────────── */
 
+/** 内部：获取当前 Unix 时间戳（秒），用于记录活跃时间和超时判断。 */
 static time_t _now(void) { return time(NULL); }
 
 /* ── 服务器生命周期 ─────────────────────────────────────────────────── */
 
+/**
+ * 创建命令服务器实例。
+ *
+ * @return 成功返回实例指针，失败返回 NULL
+ * @note   内部创建 epoll 实例（EPOLL_CLOEXEC），初始无监听 fd
+ */
 cmd_server_t* cmd_server_create(void)
 {
     cmd_server_t* s = (cmd_server_t*)calloc(1, sizeof(cmd_server_t));
@@ -91,6 +98,14 @@ cmd_server_t* cmd_server_create(void)
     return s;
 }
 
+/**
+ * 销毁服务器并释放所有资源。
+ *
+ * 关闭所有连接（含 tx_queue 释放）、所有监听 fd、epoll 实例。
+ *
+ * @param s  服务器实例（可为 NULL）
+ * @note     调用前确保 cmd_server_run 已退出
+ */
 void cmd_server_destroy(cmd_server_t* s)
 {
     if (!s) return;
@@ -123,6 +138,16 @@ void cmd_server_destroy(cmd_server_t* s)
 
 /* ── 配置 ───────────────────────────────────────────────────────────── */
 
+/**
+ * 向服务器注册一个监听 fd（由 transport_listen_* 创建）。
+ *
+ * 将 fd 以 EPOLLIN 模式加入 epoll 实例。监听 fd 使用 data.fd 字段标识，
+ * 与连接 fd 的 data.ptr 区分。
+ *
+ * @param s         服务器实例
+ * @param listen_fd 监听文件描述符
+ * @return          0 成功，-1 参数无效或已达上限
+ */
 int cmd_server_add_listener(cmd_server_t* s, int listen_fd)
 {
     if (!s || listen_fd < 0 || s->listener_count >= MAX_LISTENERS) return -1;
@@ -141,6 +166,16 @@ int cmd_server_add_listener(cmd_server_t* s, int listen_fd)
     return 0;
 }
 
+/**
+ * 设置请求处理回调。
+ *
+ * 当服务器收到完整帧时，回调会被调用。通常在 app_cmd_create 中设置为
+ * cmd_dispatcher_dispatch。
+ *
+ * @param s         服务器实例
+ * @param fn        回调函数（cmd_request_fn 类型）
+ * @param user_data 透传给回调的用户数据
+ */
 void cmd_server_set_handler(cmd_server_t* s, cmd_request_fn fn, void* user_data)
 {
     if (s) { s->handler = fn; s->handler_data = user_data; }
@@ -149,7 +184,11 @@ void cmd_server_set_handler(cmd_server_t* s, cmd_request_fn fn, void* user_data)
 /* ── 内部: 接受新连接 ────────────────────────────────────────────────── */
 
 /**
- * 内部：接受新连接，分配 cmd_conn_t 并注册到 epoll。
+ * 内部：accept 新连接，分配 cmd_conn_t、初始化 tx_lock、注册 EPOLLIN、插入 conn_head。
+ *
+ * @param s         服务器实例
+ * @param listen_fd 收到 EPOLLIN 的监听 fd
+ * @note            超过 MAX_CONNECTIONS 时直接拒绝（accept 后立即 close）
  */
 static void _accept_conn(cmd_server_t* s, int listen_fd)
 {
@@ -199,7 +238,11 @@ static void _accept_conn(cmd_server_t* s, int listen_fd)
 }
 
 /**
- * 内部：从 epoll 和连接链表移除并释放连接。
+ * 内部：关闭连接——epoll_ctl DEL、close(fd)、链表摘除、释放 tx_queue、free。
+ *
+ * @param s     服务器实例
+ * @param conn  待关闭的连接
+ * @note        不会自动清理订阅（server 不持有 sub_mgr 引用），调用方需自行处理
  */
 static void _close_conn(cmd_server_t* s, cmd_conn_t* conn)
 {
@@ -235,8 +278,15 @@ static void _close_conn(cmd_server_t* s, cmd_conn_t* conn)
 /* ── 内部: 数据处理 ─────────────────────────────────────────────────── */
 
 /**
- * 内部：尝试从连接的 rx_buf 中解析一帧。
- * 成功解析后调用 handler 回调，循环直到 rx_buf 无完整帧或出错。
+ * 内部：循环解析 rx_buf 中的所有完整帧，逐帧调用 handler 回调。
+ *
+ * 对 cmd_protocol_parse 三种返回值的处理:
+ *   rc= 0 → 完整帧 → s->handler() → free → memmove 移除已消费字节 → 继续循环
+ *   rc= 1 → 数据不足 → break 等待更多数据
+ *   rc=-1 → CRC 错误 → 跳过 consumed 字节 → 继续循环
+ *
+ * @param s    服务器实例
+ * @param conn 收到数据的连接
  */
 static void _process_rx(cmd_server_t* s, cmd_conn_t* conn)
 {
@@ -290,9 +340,12 @@ static void _process_rx(cmd_server_t* s, cmd_conn_t* conn)
 }
 
 /**
- * 内部：从连接读取数据追加到 rx_buf。
+ * 内部：从 socket 读取数据到 rx_buf，然后调用 _process_rx 解析。
  *
- * @return 0 连接仍活跃，1 连接已被关闭（调用者不应再访问 conn）
+ * @param s    服务器实例
+ * @param conn 收到 EPOLLIN 的连接
+ * @return     0=连接正常  1=连接已关闭（调用者不得再访问 conn）
+ * @note       read()=0 表示对端关闭，read()<0 且非 EAGAIN 表示错误
  */
 static int _handle_read(cmd_server_t* s, cmd_conn_t* conn)
 {
@@ -320,7 +373,17 @@ static int _handle_read(cmd_server_t* s, cmd_conn_t* conn)
 }
 
 /**
- * 内部：将 tx_queue 中数据写入 socket。
+ * 内部：遍历 tx_queue 链表，逐节点 write() 发送数据。
+ *
+ * 发送流程:
+ *   加 tx_lock → 遍历 tx_head → write(fd) → 已完成的节点释放
+ *   → 未完全发送的节点保留（等下次 EPOLLOUT）
+ *   → 全部发送完毕则 epoll_ctl MOD 取消 EPOLLOUT（只保留 EPOLLIN）
+ *
+ * @param s    服务器实例
+ * @param conn 收到 EPOLLOUT 的连接
+ * @note       write() 错误时直接关闭连接
+ * @note       不设 EPOLLET——使用 level-triggered，避免丢发送事件
  */
 static void _handle_write(cmd_server_t* s, cmd_conn_t* conn)
 {
@@ -357,11 +420,11 @@ static void _handle_write(cmd_server_t* s, cmd_conn_t* conn)
         }
     }
 
-    /* 如果全部发完，取消 EPOLLOUT 监听 */
+    /* 如果全部发完，取消 EPOLLOUT 监听（只保留 level-triggered EPOLLIN） */
     if (!conn->tx_head) {
         struct epoll_event ev;
         memset(&ev, 0, sizeof(ev));
-        ev.events   = EPOLLIN | EPOLLET;
+        ev.events   = EPOLLIN;         /* level-triggered，不用 EPOLLET */
         ev.data.ptr = conn;
         epoll_ctl(s->epoll_fd, EPOLL_CTL_MOD, conn->fd, &ev);
     }
@@ -370,7 +433,10 @@ static void _handle_write(cmd_server_t* s, cmd_conn_t* conn)
 }
 
 /**
- * 内部：检查并踢出超时连接。
+ * 内部：扫描 conn_head 链表，关闭超过 CONN_TIMEOUT_SEC(60s) 无活动的连接。
+ *
+ * @param s  服务器实例
+ * @note     每轮 epoll_wait 后调用一次（~10s 间隔）
  */
 static void _check_idle(cmd_server_t* s)
 {
@@ -389,6 +455,25 @@ static void _check_idle(cmd_server_t* s)
 
 /* ── 事件循环 ───────────────────────────────────────────────────────── */
 
+/**
+ * 启动 epoll 事件循环（阻塞当前线程直到 cmd_server_stop 被调用）。
+ *
+ * 循环结构:
+ *   while running:
+ *     epoll_wait(epoll_fd, events, 16, 10000ms)
+ *       ├── 监听 fd + EPOLLIN → _accept_conn()
+ *       ├── 连接 fd + EPOLLIN → _handle_read()  → read+解析+handler回调
+ *       ├── 连接 fd + EPOLLOUT → _handle_write() → tx_queue 写出
+ *       ├── 连接 fd + EPOLLERR/EPOLLHUP → _close_conn()
+ *     _check_idle()  ← 每 10s 踢出 60s 超时连接
+ *
+ * 事件路由: 监听 fd 通过 listener_fds[] 数组匹配 data.fd 区分，
+ *          连接 fd 通过 data.ptr 指向 cmd_conn_t。
+ *
+ * @param s  服务器实例
+ * @return   0 正常退出，-1 参数错误（无监听 fd）
+ * @note     epoll_wait 超时 10s 是故意的——用于定期触发 _check_idle
+ */
 int cmd_server_run(cmd_server_t* s)
 {
     if (!s || s->listener_count == 0) {
@@ -451,6 +536,14 @@ int cmd_server_run(cmd_server_t* s)
     return 0;
 }
 
+/**
+ * 请求事件循环退出（异步信号安全）。
+ *
+ * 仅设置 running=0，实际的 epoll_wait 在下一次返回后退出循环。
+ *
+ * @param s  服务器实例
+ * @note     可从信号处理器或任意线程安全调用（volatile int 写入是原子的）
+ */
 void cmd_server_stop(cmd_server_t* s)
 {
     if (s) s->running = 0;
