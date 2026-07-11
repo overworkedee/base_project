@@ -97,6 +97,10 @@ class _SshWorker(QObject):
             )
             # 不设 timeout，用 recv_ready() 轮询替代，避免超时异常
             self.connection_changed.emit(True)
+
+            # 确保远程 shell 的 erase 字符设为 DEL（\x7f），与终端 Backspace 一致
+            self._channel.send(b'stty erase ^?\n')
+
         except Exception as e:
             self.error_occurred.emit(f"SSH 连接失败: {e}")
             self._running = False
@@ -249,7 +253,7 @@ class TerminalTab(QWidget):
         key_map = {
             Qt.Key_Return:   b'\r',
             Qt.Key_Enter:    b'\r',
-            Qt.Key_Backspace: b'\x7f',
+            Qt.Key_Backspace: b'\x7f',  # DEL（Linux 标准），若需 BS(0x08) 可在 connect 后发 stty erase ^H
             Qt.Key_Tab:      b'\t',
             Qt.Key_Escape:   b'\x1b',
             Qt.Key_Up:       b'\x1b[A',
