@@ -95,35 +95,37 @@ class _SshWorker(QObject):
             self._channel = self._client.invoke_shell(
                 term='xterm-256color', width=120, height=40,
             )
-            self._channel.settimeout(0.3)
+            # 不设 timeout，用 recv_ready() 轮询替代，避免超时异常
             self.connection_changed.emit(True)
         except Exception as e:
             self.error_occurred.emit(f"SSH 连接失败: {e}")
             self._running = False
             return
 
-        # 循环读取
+        # 循环读取: 用 recv_ready() 轮询 + sleep，不依赖 settimeout
+        import time as _time
         buf = bytearray()
         while self._running and self._channel and not self._channel.closed:
             try:
-                chunk = self._channel.recv(4096)
-                if chunk:
-                    buf.extend(chunk)
-                    try:
-                        text = buf.decode('utf-8', errors='replace')
-                        if text:
-                            clean = _strip_ansi(text)
-                            if clean:
-                                self.output_received.emit(clean)
-                        buf.clear()
-                    except Exception:
-                        pass
+                if self._channel.recv_ready():
+                    chunk = self._channel.recv(4096)
+                    if chunk:
+                        buf.extend(chunk)
+                        try:
+                            text = buf.decode('utf-8', errors='replace')
+                            if text:
+                                clean = _strip_ansi(text)
+                                if clean:
+                                    self.output_received.emit(clean)
+                            buf.clear()
+                        except Exception:
+                            pass
+                    else:
+                        break  # 空 chunk = 通道关闭
                 else:
-                    break
-            except paramiko.buffered_pipe.PipeTimeout:
-                continue
+                    _time.sleep(0.05)  # 无数据，短暂休眠
             except Exception as e:
-                self.error_occurred.emit(f"读取错误: {e}")
+                self.error_occurred.emit(f"读取错误: {type(e).__name__}: {e}")
                 break
 
         self._running = False
