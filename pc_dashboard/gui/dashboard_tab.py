@@ -84,7 +84,7 @@ class DashboardTab(QWidget):
         led_layout = QVBoxLayout(led_group)
 
         led_info = QHBoxLayout()
-        led_info.addWidget(QLabel("blue_led"))
+        led_info.addWidget(QLabel("green_led"))
         self.led_state_label = QLabel("● OFF")
         self.led_state_label.setStyleSheet("color: #95a5a6; font-weight: bold;")
         led_info.addWidget(self.led_state_label)
