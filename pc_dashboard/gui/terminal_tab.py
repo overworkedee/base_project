@@ -4,6 +4,15 @@ import threading
 import re
 
 import paramiko
+
+# ── ANSI 转义序列过滤器 ──────────────────────────────────────────
+
+_ANSI_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
+
+def _strip_ansi(text: str) -> str:
+    """ 过滤 ANSI 转义序列（颜色、光标移动等），保留可打印文本。 """
+    return _ANSI_RE.sub('', text)
 from PySide6.QtCore import QObject, Signal, Qt, QTimer
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
@@ -97,7 +106,9 @@ class _SshWorker(QObject):
                     try:
                         text = buf.decode('utf-8', errors='replace')
                         if text:
-                            self.output_received.emit(text)
+                            clean = _strip_ansi(text)
+                            if clean:
+                                self.output_received.emit(clean)
                         buf.clear()
                     except Exception:
                         pass
@@ -188,77 +199,75 @@ class TerminalTab(QWidget):
     # ── 事件过滤器：拦截终端中的按键 → 发送到 SSH ──────────────
 
     def eventFilter(self, obj, event):
-        if obj is not self.term or not self._connected:
+        if obj is not self.term:
             return super().eventFilter(obj, event)
 
+        # 未连接时允许本地编辑（输入连接信息测试用）
+        if not self._connected:
+            return super().eventFilter(obj, event)
+
+        # 已连接：所有按键转发到 SSH，禁止 QPlainTextEdit 本地插入
         if event.type() == event.Type.KeyPress:
-            return self._handle_key(event)
+            self._handle_key(event)
+            return True  # 始终吞掉事件，不交给 QPlainTextEdit
+
+        # 鼠标选择/复制可以放行
+        if event.type() in (event.Type.MouseButtonPress,
+                            event.Type.MouseButtonRelease,
+                            event.Type.MouseMove):
+            return super().eventFilter(obj, event)
+
+        # 其他事件（快捷键等）也放行
         return super().eventFilter(obj, event)
 
-    def _handle_key(self, event: QKeyEvent) -> bool:
-        """ 将按键转发到 SSH PTY。返回 True 表示事件已处理。 """
+    def _handle_key(self, event: QKeyEvent):
+        """ 将按键转发到 SSH PTY。直接通过 channel.send 发送字节。 """
         key = event.key()
         modifiers = event.modifiers()
 
-        # 组合键映射
+        # Ctrl 组合键
         if modifiers == Qt.ControlModifier:
             ctrl_map = {
-                Qt.Key_C: b'\x03',    # Ctrl+C → SIGINT
-                Qt.Key_D: b'\x04',    # Ctrl+D → EOF
-                Qt.Key_Z: b'\x1a',    # Ctrl+Z → SIGTSTP
-                Qt.Key_L: b'\x0c',    # Ctrl+L → clear screen
-                Qt.Key_A: b'\x01',    # Ctrl+A → home
-                Qt.Key_E: b'\x05',    # Ctrl+E → end
-                Qt.Key_U: b'\x15',    # Ctrl+U → kill line
-                Qt.Key_W: b'\x17',    # Ctrl+W → kill word
-                Qt.Key_K: b'\x0b',    # Ctrl+K → kill to end
+                Qt.Key_C: b'\x03', Qt.Key_D: b'\x04', Qt.Key_Z: b'\x1a',
+                Qt.Key_L: b'\x0c', Qt.Key_A: b'\x01', Qt.Key_E: b'\x05',
+                Qt.Key_U: b'\x15', Qt.Key_W: b'\x17', Qt.Key_K: b'\x0b',
             }
             if key in ctrl_map:
                 self._worker.send(ctrl_map[key])
-                return True
+                return
 
-        # 普通按键映射
-        if key in (Qt.Key_Return, Qt.Key_Enter):
-            self._worker.send(b'\r')   # CR
-            return True
-        elif key == Qt.Key_Backspace:
-            self._worker.send(b'\x7f')
-            return True
-        elif key == Qt.Key_Tab:
-            self._worker.send(b'\t')
-            return True
-        elif key == Qt.Key_Escape:
-            self._worker.send(b'\x1b')
-            return True
-        elif key == Qt.Key_Up:
-            self._worker.send(b'\x1b[A')
-            return True
-        elif key == Qt.Key_Down:
-            self._worker.send(b'\x1b[B')
-            return True
-        elif key == Qt.Key_Right:
-            self._worker.send(b'\x1b[C')
-            return True
-        elif key == Qt.Key_Left:
-            self._worker.send(b'\x1b[D')
-            return True
-        elif key == Qt.Key_Home:
-            self._worker.send(b'\x1b[H')
-            return True
-        elif key == Qt.Key_End:
-            self._worker.send(b'\x1b[F')
-            return True
-        elif key == Qt.Key_Delete:
-            self._worker.send(b'\x1b[3~')
-            return True
+        # 功能键
+        key_map = {
+            Qt.Key_Return:   b'\r',
+            Qt.Key_Enter:    b'\r',
+            Qt.Key_Backspace: b'\x7f',
+            Qt.Key_Tab:      b'\t',
+            Qt.Key_Escape:   b'\x1b',
+            Qt.Key_Up:       b'\x1b[A',
+            Qt.Key_Down:     b'\x1b[B',
+            Qt.Key_Right:    b'\x1b[C',
+            Qt.Key_Left:     b'\x1b[D',
+            Qt.Key_Home:     b'\x1b[H',
+            Qt.Key_End:      b'\x1b[F',
+            Qt.Key_Delete:   b'\x1b[3~',
+        }
+        if key in key_map:
+            self._worker.send(key_map[key])
+            return
 
-        # 普通可打印字符
+        # PageUp/PageDown
+        if key == Qt.Key_PageUp:
+            self._worker.send(b'\x1b[5~')
+            return
+        if key == Qt.Key_PageDown:
+            self._worker.send(b'\x1b[6~')
+            return
+
+        # 普通可打印字符（含中文等多字节字符）
         text = event.text()
-        if text and len(text) == 1 and ord(text) >= 0x20:
+        if text:
             self._worker.send(text.encode('utf-8'))
-            return True
-
-        return super().eventFilter(self.term, event)
+        # 未识别的键：静默忽略
 
     # ── 槽函数 ──────────────────────────────────────────────
 
