@@ -112,7 +112,12 @@ class MainWindow(QMainWindow):
         )
 
     def _on_connect(self) -> None:
-        """ 连接/重连按钮回调。 """
+        """
+        连接/重连按钮回调。
+
+        从 UI 读取 host/port，调用 client.connect()，成功后通知所有 Model
+        的 on_connected()，失败则在状态栏显示错误。
+        """
         host = self.host_input.text().strip()
         try:
             port = int(self.port_input.text().strip())
@@ -156,7 +161,12 @@ class MainWindow(QMainWindow):
         self.log_model.on_disconnected()
 
     def _on_push(self, frame: dict) -> None:
-        """ 推送帧分发到各模型。 """
+        """
+        推送帧回调（从 CmdClient 后台线程触发）。
+
+        依次尝试各 Model 的 handle_push()，由 Model 自行判断是否处理。
+        扩展新推送类型时只需在此增加一行分发调用。
+        """
         self.sensor_model.handle_push(frame)
         self.log_model.handle_push(frame)
 

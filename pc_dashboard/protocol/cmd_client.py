@@ -73,7 +73,15 @@ class CmdClient(QObject if _HAS_QT else object):
     # ── 连接管理 ──────────────────────────────────────────────
 
     def connect(self, host: str, port: int = 9527) -> bool:
-        """ 连接到开发板 cmd_server。失败返回 False。 """
+        """
+        连接到开发板的 cmd_server。
+
+        自动断开旧连接、创建 socket、启动后台读取线程。
+
+        @param host  IP 地址或主机名
+        @param port  TCP 端口（默认 9527）
+        @return     True 连接成功，False 失败
+        """
         self.disconnect()
 
         try:
@@ -95,7 +103,11 @@ class CmdClient(QObject if _HAS_QT else object):
         return True
 
     def disconnect(self) -> None:
-        """ 断开连接，停止后台线程。 """
+        """
+        断开连接，停止后台读取线程，释放 socket 资源。
+
+        安全操作：可对已断开的连接调用。
+        """
         self._stop_reader()
 
         with self._sock_lock:

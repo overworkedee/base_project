@@ -29,7 +29,12 @@ class SensorModel(QObject):
         self._subscribed: set = set()
 
     def on_connected(self) -> None:
-        """ 连接成功后调用：读取初始值 + 自动订阅。 """
+        """
+        连接成功后调用。
+
+        发送 CMD_SENSOR + SUB_READ 读取初始温湿度，然后自动订阅 1 秒推送。
+        结果通过 temperature_updated / humidity_updated signals 通知 GUI。
+        """
         # 读取初始值
         rsp = self._client.send_request(CMD_SENSOR, CMD_SUB_READ)
         if rsp and rsp.get("payload"):
@@ -58,9 +63,13 @@ class SensorModel(QObject):
 
     def handle_push(self, frame: dict) -> bool:
         """
-        处理推送帧。返回 True 表示已处理。
+        处理传感器推送帧（从后台线程通过 MainWindow._on_push 分发）。
 
-        推送帧 PAYLOAD = [data_id 2B BE, value N B]
+        推送帧格式: PAYLOAD=[data_id 2B BE, value 4B BE float]
+        成功解析后 emit temperature_updated 或 humidity_updated。
+
+        @param frame  解析后的帧 dict
+        @return       True 表示已处理，False 表示非传感器推送帧
         """
         sub = frame["sub"] & 0x7F
         if frame["cmd"] != CMD_SENSOR or sub != CMD_SUB_SUBSCRIBE:

@@ -47,9 +47,13 @@ class LogModel(QObject):
 
     def handle_push(self, frame: dict) -> bool:
         """
-        处理日志推送帧。返回 True 表示已处理。
+        处理日志推送帧（从后台线程通过 MainWindow._on_push 分发）。
 
-        推送帧 PAYLOAD = [data_id 2B BE, level 1B, reserved 1B, timestamp 4B LE, msg N B]
+        推送帧格式: PAYLOAD=[data_id 2B BE | level 1B | reserved 1B | timestamp 4B LE | msg N B]
+        解析后存入环形缓冲区并 emit log_received。
+
+        @param frame  解析后的帧 dict
+        @return       True 已处理，False 非日志推送帧
         """
         sub = frame["sub"] & 0x7F
         if frame["cmd"] != CMD_SYSTEM or sub != CMD_SUB_LOG_SUBSCRIBE:

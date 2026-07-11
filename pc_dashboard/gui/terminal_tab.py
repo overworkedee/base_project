@@ -13,11 +13,23 @@ from PySide6.QtGui import QFont, QTextCursor, QColor
 
 
 class _SshWorker(QObject):
-    """ SSH 后台工作线程，负责连接、读取输出、发送命令。 """
+    """
+    SSH 后台工作线程，通过 paramiko 管理 SSH 会话。
 
-    output_received = Signal(str)       # 终端输出文本
-    connection_changed = Signal(bool)   # 连接状态
-    error_occurred = Signal(str)        # 错误消息
+    线程模型:
+      - connect() 启动 daemon 线程建立连接并循环读取
+      - send_command() 从主线程写入 SSH channel
+      - 输出通过 Qt Signals 跨线程通知 GUI
+
+    Signals:
+      output_received(str)    — 终端输出文本（ANSI 已过滤）
+      connection_changed(bool) — True=已连接 False=已断开
+      error_occurred(str)     — 错误消息（连接失败等）
+    """
+
+    output_received = Signal(str)
+    connection_changed = Signal(bool)
+    error_occurred = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -118,7 +130,12 @@ class _SshWorker(QObject):
 
 
 class TerminalTab(QWidget):
-    """ SSH 终端页面。 """
+    """
+    SSH 终端页面 —— 通过 paramiko SSH 到开发板执行命令。
+
+    与 cmd 协议独立，不依赖 CmdClient 连接状态。输入命令按 Enter 发送，
+    输出实时显示在暗色终端区域。支持 ANSI 转义序列过滤。
+    """
 
     def __init__(self):
         super().__init__()

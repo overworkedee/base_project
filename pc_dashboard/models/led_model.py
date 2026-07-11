@@ -27,7 +27,15 @@ class LedModel(QObject):
         self.led_state.clear()
 
     def set_led(self, led_id: int, on: bool) -> bool:
-        """ 开/关 LED。自动防抖。 """
+        """
+        开/关 LED，通过 CMD_LED + SUB_WRITE 发送命令。
+
+        内置 500ms 防抖，防止连续点击导致命令风暴。
+
+        @param led_id  LED 编号（当前固定为 1）
+        @param on      True=开，False=关
+        @return        True 成功，False 防抖期内或发送失败
+        """
         now = time.monotonic()
         if now - self._last_action < self._debounce_ms:
             return False
