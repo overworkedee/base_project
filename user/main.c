@@ -137,6 +137,17 @@ static void cleanup(void)
 
     g_running = 0;
 
+    /**
+     * 关键顺序：必须先注销日志回调，否则后续 LOG_* 会触发 on_log_push 访问
+     * 已释放的 sub_mgr，造成 use-after-free segfault。
+     *
+     *   1. 注销 log callback  ← 阻止 on_log_push 访问 sub_mgr
+     *   2. 销毁 cmd 模块      ← 释放 sub_mgr/server/dispatcher
+     *   3. 关闭硬件           ← led_close/sht30_close 可能调用 LOG_*
+     *   4. 关闭日志模块       ← log_deinit 内部调用 LOG_INFO
+     */
+    log_set_subscribe_callback(NULL, NULL);
+
     if (g_cmd) {
         app_cmd_destroy(g_cmd);
         g_cmd = NULL;
