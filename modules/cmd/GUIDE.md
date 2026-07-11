@@ -22,6 +22,295 @@ cmd 是 project_app 的**远程控制与监控通道**，允许 PC/网页通过 
 
 **依赖方向：上层依赖下层，下层不知道上层存在。**
 
+## 2.1 完整函数调用链
+
+以下按时间顺序，追踪一个请求从 socket 到达 → 解析 → 分发 → 响应 → 发送的完整路径。
+
+### 启动阶段
+
+```
+main()
+  ├── app_cmd_create()
+  │     ├── cmd_subscription_create()          → sub_mgr
+  │     │     └── hw_mutex_init(&mgr->lock)
+  │     ├── cmd_dispatcher_create(sub_mgr)     → dispatcher
+  │     └── cmd_server_create()                → server
+  │           └── epoll_create1(EPOLL_CLOEXEC)
+  │
+  ├── app_cmd_register(g_cmd, CMD_LED,    cmd_handler_led,    g_led)
+  │     └── cmd_dispatcher_register(CMD_LED, handler, ctx)
+  │           └── entries[0x01] = {handler, ctx}
+  │
+  ├── app_cmd_register(g_cmd, CMD_SENSOR, cmd_handler_sensor, &sctx)
+  ├── app_cmd_register(g_cmd, CMD_SYSTEM, cmd_handler_system, sub_mgr)
+  │
+  ├── app_cmd_add_listener_unix(g_cmd, "/tmp/cmd.sock")
+  │     ├── cmd_transport_listen_unix(path)
+  │     │     ├── socket(AF_UNIX, SOCK_STREAM)
+  │     │     ├── bind(fd, ...)
+  │     │     └── listen(fd, 32)
+  │     └── cmd_server_add_listener(server, fd)
+  │           └── epoll_ctl(EPOLL_CTL_ADD, fd, EPOLLIN)
+  │
+  ├── app_cmd_add_listener_tcp(g_cmd, 9527)
+  │     ├── cmd_transport_listen_tcp(9527)
+  │     │     ├── socket(AF_INET, SOCK_STREAM)
+  │     │     ├── setsockopt(SO_REUSEADDR)
+  │     │     ├── bind(fd, 0.0.0.0:9527)
+  │     │     └── listen(fd, 32)
+  │     └── cmd_server_add_listener(server, fd)
+  │
+  ├── log_set_subscribe_callback(on_log_push, sub_mgr)
+  │     └── g_log_sub_cb = on_log_push  (之后每条 LOG_* 都会触发)
+  │
+  └── app_cmd_run(g_cmd)
+        └── cmd_server_run(server)            ← 进入 epoll 事件循环（阻塞）
+```
+
+### 请求处理阶段（从字节到响应）
+
+```
+cmd_server_run()                                [主线程]
+  │
+  └── while (s->running):
+        nfds = epoll_wait(epoll_fd, events, 16, 10000ms)
+        │
+        for each event: ──────────────────────────────────────
+        │
+        ├── [监听 fd 收到 EPOLLIN]
+        │   _accept_conn(s, listen_fd)          cmd_server.c:154
+        │     ├── cmd_transport_accept(fd)       cmd_transport.c:95
+        │     │     └── accept(fd, NULL, NULL)
+        │     ├── calloc(cmd_conn_t)            ← 分配连接结构
+        │     ├── hw_mutex_init(&conn->tx_lock)
+        │     ├── epoll_ctl(EPOLL_CTL_ADD, client_fd, EPOLLIN)
+        │     └── 插入 conn_head 链表
+        │
+        ├── [连接 fd 收到 EPOLLIN]
+        │   closed = _handle_read(s, conn)      cmd_server.c:297
+        │     ├── read(conn->fd, conn->rx_buf + rx_len, space)
+        │     │     └── 内核 TCP 栈 → 应用层字节流
+        │     └── _process_rx(s, conn)          cmd_server.c:241
+        │           │
+        │           └── while (conn->rx_len > 0):  ← 循环解析粘包
+        │                 rc = cmd_protocol_parse(rx_buf, rx_len, &frame, &consumed)
+        │                 │                      cmd_protocol.c:58
+        │                 │   ├── 扫描 0xA5 0x5A 帧头
+        │                 │   ├── 读取 LEN (ntohs)
+        │                 │   ├── 检查完整性
+        │                 │   ├── cmd_crc8() 校验
+        │                 │   └── malloc(payload) + memcpy
+        │                 │
+        │                 if (rc == 0):         ← 完整帧
+        │                   s->handler(&frame, conn, s->handler_data)
+        │                   │
+        │                   │ 即 app_cmd.c 中的 on_request():
+        │                   │   cmd_dispatcher_dispatch(disp, req, conn)
+        │                   │                      cmd_dispatcher.c:72
+        │                   │     ├── entry = &d->entries[req->cmd]
+        │                   │     ├── if (!entry->handler):
+        │                   │     │     _send_error(CMD_ERR_UNKNOWN_CMD)
+        │                   │     │     └── cmd_conn_send(conn, &err_rsp)
+        │                   │     └── entry->handler(req, conn, entry->ctx)
+        │                   │           │
+        │                   │           ├─ cmd_handler_led()     cmd_handler_led.c
+        │                   │           │    led_on(led) / led_off(led)
+        │                   │           │    cmd_conn_send(conn, &rsp)
+        │                   │           │
+        │                   │           ├─ cmd_handler_sensor()  cmd_handler_sensor.c
+        │                   │           │    sht30_read_temperature() / sht30_read_humidity()
+        │                   │           │    cmd_conn_send()  或  cmd_subscription_add/remove()
+        │                   │           │
+        │                   │           └─ cmd_handler_system()  cmd_handler_system.c
+        │                   │                log_set_level()   或  cmd_subscription_add/remove()
+        │                   │                log_ring_get_all() 或  cmd_conn_send()
+        │                   │
+        │                   cmd_protocol_free_frame(&frame)
+        │                   memmove() 移除已消费字节
+        │
+        ├── [连接 fd 收到 EPOLLOUT]
+        │   _handle_write(s, conn)              cmd_server.c:325
+        │     ├── hw_mutex_lock(&conn->tx_lock)
+        │     ├── while (conn->tx_head):
+        │     │     write(conn->fd, node->data + sent, remain)
+        │     │     if 全部发送: free(node) 摘除链表
+        │     │     else:         break (等下次 EPOLLOUT)
+        │     └── hw_mutex_unlock(&conn->tx_lock)
+        │
+        └── [超时检查，每 10s]
+            _check_idle(s)                      cmd_server.c:375
+              └── 遍历 conn_head:
+                    若 now - conn->last_active > 60s:
+                      _close_conn(s, conn)
+                        ├── epoll_ctl(EPOLL_CTL_DEL)
+                        ├── close(fd)
+                        ├── 链表摘除
+                        ├── 释放 tx_queue
+                        └── free(conn)
+```
+
+### cmd_conn_send 的完整路径（handler → 网络）
+
+```
+cmd_handler_led() 中:
+  cmd_conn_send(conn, &rsp)                   cmd_server.c:461
+    │
+    ├── cmd_protocol_pack(&rsp, data, total, &out_len)
+    │                                          cmd_protocol.c:19
+    │     ├── htons(frame->len)               ← BE 序转换
+    │     ├── memcpy HEAD + LEN + CMD + SUB + PAYLOAD
+    │     └── cmd_crc8(buf, total-1)          ← XOR all
+    │
+    ├── malloc(tx_node)                       ← 创建发送节点
+    │
+    ├── hw_mutex_lock(&conn->tx_lock)         ← 线程安全
+    ├── 加入 conn->tx_tail 链表
+    ├── if (was_empty):
+    │     epoll_ctl(EPOLL_CTL_MOD, EPOLLIN|EPOLLOUT)  ← 激活发送
+    └── hw_mutex_unlock(&conn->tx_lock)
+```
+
+### 订阅生命周期（完整）
+
+```
+[订阅]
+客户端帧: CMD=SENSOR, SUB=SUBSCRIBE, PAYLOAD=[data_id BE, interval BE]
+  │
+  _process_rx() 中 s->handler 回调
+    → cmd_dispatcher_dispatch(disp, req, conn)
+      → cmd_handler_sensor(req, conn, ctx)
+          op=SUBSCRIBE:
+            ntohs(data_id), ntohs(interval)
+            cmd_subscription_add(sub_mgr, data_id, interval, conn)
+                                               cmd_subscription.c:107
+              ├── hw_mutex_lock(&mgr->lock)
+              ├── _find_stream(mgr, data_id)   ← 查找已有 data_stream
+              │     └── 遍历 mgr->streams_head 链表
+              ├── if (相同 data_id+conn 已存在):
+              │     sn->interval_ms = interval ← 更新间隔
+              │     return 0
+              ├── _ensure_stream(mgr, data_id) ← 不存在则创建
+              │     ├── calloc(data_stream_t)
+              │     └── 插入 streams_head 头部
+              ├── calloc(sub_node_t)
+              ├── sn->conn = conn
+              ├── sn->interval_ms = interval
+              ├── sn->next = ds->subs_head    ← 插入订阅者链表头部
+              └── hw_mutex_unlock(&mgr->lock)
+
+[推送]
+sensor_thread 中:
+  sht30_read_temperature(&temp_c)
+  htonl(temp_c)
+  cmd_subscription_push(sub_mgr, CMD_SENSOR, CMD_DATA_TEMPERATURE, val, 4)
+                                               cmd_subscription.c:182
+    ├── hw_mutex_lock(&mgr->lock)
+    ├── _find_stream(mgr, data_id)
+    ├── if (!ds || !ds->subs_head): return 0 ← 无订阅者
+    ├── 组帧:
+    │     pld = [data_id 2B BE | value N B]
+    │     frame.cmd = CMD_SENSOR
+    │     frame.sub = cmd_frame_sub_rsp(CMD_SUB_SUBSCRIBE) = 0x83
+    ├── while (sn = ds->subs_head ...):
+    │     cmd_conn_send(sn->conn, &frame)     ← 发给每个订阅者
+    │     count++
+    └── hw_mutex_unlock(&mgr->lock)
+
+[取消]
+客户端帧: CMD=SENSOR, SUB=UNSUBSCRIBE, PAYLOAD=[data_id BE]
+  cmd_handler_sensor() → cmd_subscription_remove(sub_mgr, data_id, conn)
+    ├── hw_mutex_lock(&mgr->lock)
+    ├── _find_stream(data_id)
+    ├── 遍历 ds->subs_head, 匹配 conn
+    ├── 链表摘除 + free(sub_node_t)
+    └── hw_mutex_unlock(&mgr->lock)
+```
+
+### 日志流的完整路径（LOG_* 宏 → 上位机）
+
+```
+任意代码中:
+  LOG_INFO("SHT30 sensor initialized at %s", path)
+    └── LOG_WRITE(LOG_INFO, fmt, ...)
+          └── log_write_impl(LOG_INFO, __FILE__, __LINE__, __func__, fmt, ...)
+                                                log.c:200
+              │
+              ├── _make_timestamp()             ← 锁外，避免系统调用在临界区
+              │
+              ├── hw_mutex_lock(&g_log.lock)
+              │
+              ├── 等级过滤
+              │
+              ├── snprintf(header) + vsnprintf(msg)  ← 格式化: [时间][等级][文件:行 函数]
+              │
+              ├── fprintf(g_log.fp,     "%s%s\n", header, msg)  ← 写日志文件
+              ├── fprintf(stdout,       "%s%s\n", header, msg)  ← 写终端
+              │
+              ├── _log_ring_push(level, msg)      ← 环形缓冲区
+              │     ├── g_log_ring[head] = {level, time(NULL), msg}
+              │     └── head = (head+1) % LOG_RING_SIZE
+              │
+              ├── if (g_log_sub_cb):
+              │     g_log_sub_cb(level, msg, g_log_sub_ctx)
+              │     │
+              │     │ 即 main.c 中的 on_log_push():          main.c
+              │     │   ├── 构造数据: [level|reserved|timestamp LE|msg]
+              │     │   └── cmd_subscription_push(sub_mgr, CMD_SYSTEM,
+              │     │          CMD_DATA_LOG, buf, data_len)
+              │     │         └── 遍历 CMD_DATA_LOG 的订阅者 → cmd_conn_send
+              │     │
+              └── hw_mutex_unlock(&g_log.lock)
+
+[首次订阅时的历史回放]
+cmd_handler_system() → op=CMD_SUB_LOG_SUBSCRIBE:
+  cmd_subscription_add(sub_mgr, CMD_DATA_LOG, 0, conn)  ← interval=0 事件驱动
+  │
+  log_ring_get_all(entries, &count)                      log.c
+  │   ├── hw_mutex_lock(&g_log.lock)
+  │   ├── 从 head-count 处开始，环形遍历复制
+  │   └── hw_mutex_unlock(&g_log.lock)
+  │
+  for (i=0; i<count && i<500; i++):
+      构造推送帧 → cmd_conn_send(conn, &push)             ← 逐条发给新订阅者
+```
+
+## 2.2 模块依赖矩阵
+
+```
+              ┌──────────┬──────────┬──────────┬──────────┬──────────┬──────────┐
+              │transport │ protocol │  server  │dispatcher│subscript │ handler  │
+├─────────────┼──────────┼──────────┼──────────┼──────────┼──────────┼──────────┤
+│ transport   │    -     │          │          │          │          │          │
+│ protocol    │          │    -     │          │          │          │          │
+│ server      │  accept  │ pack(发) │    -     │ request  │          │  send    │
+│             │  创建fd  │ parse(收)│          │  cb调起  │          │  队列    │
+│ dispatcher  │          │          │          │    -     │  提供    │ 调用     │
+│             │          │          │          │          │ sub_mgr  │ handler  │
+│ subscription│          │ 组推送帧 │ cmd_conn │          │    -     │          │
+│             │          │ pack()   │  _send   │          │          │          │
+│ handler     │          │ 组响应帧 │ cmd_conn │          │  add/rm  │    -     │
+│             │          │ pack()   │  _send   │          │ 推送     │          │
+└─────────────┴──────────┴──────────┴──────────┴──────────┴──────────┴──────────┘
+
+线程安全边界:
+  ┌─ 主线程（epoll event loop）────────────────────────────────┐
+  │  _accept_conn / _handle_read / _handle_write / _check_idle │
+  │  _process_rx → dispatcher → handler → cmd_conn_send        │
+  └────────────────────────────────────────────────────────────┘
+  ┌─ sensor_thread ────────────────────────────────────────────┐
+  │  sht30_read → cmd_subscription_push → cmd_conn_send        │
+  └────────────────────────────────────────────────────────────┘
+  ┌─ 任意线程调用 LOG_* ───────────────────────────────────────┐
+  │  log_write_impl → _log_ring_push → on_log_push             │
+  │                → cmd_subscription_push → cmd_conn_send      │
+  └────────────────────────────────────────────────────────────┘
+
+  并发保护:
+    cmd_conn_send()      → conn->tx_lock  (每连接独立锁)
+    cmd_subscription_*() → mgr->lock      (全局互斥锁)
+    log_write_impl()     → g_log.lock     (日志模块锁)
+```
+
 ## 3. 二进制帧格式
 
 ```
