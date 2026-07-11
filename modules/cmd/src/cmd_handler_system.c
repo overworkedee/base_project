@@ -10,16 +10,18 @@
 #include "cmd/cmd_dispatcher.h"
 #include "cmd/cmd_server.h"
 #include "cmd/cmd_protocol.h"
+#include "cmd/cmd_subscription.h"
 #include "log/log.h"
 
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>  /* htons */
 
 #define APP_VERSION  "1.0.0"
 
 void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 {
-    (void)ctx;  /* system handler 不需要 ctx */
+    cmd_subscription_mgr_t* sub_mgr = (cmd_subscription_mgr_t*)ctx;
 
     uint8_t op = cmd_frame_sub_req(req->sub);
 
@@ -82,6 +84,71 @@ void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
         cmd_conn_send(conn, &rsp);
 
         LOG_INFO("Log level changed to %d by command", level);
+
+    } else if (op == CMD_SUB_LOG_SUBSCRIBE) {
+        /* 订阅日志推送: 先推送缓冲日志(最多500条)，再注册实时推送 */
+        if (!sub_mgr) {
+            uint8_t err = CMD_ERR_HARDWARE;
+            cmd_frame_t rsp = { .cmd = CMD_SYSTEM, .sub = cmd_frame_sub_rsp(req->sub),
+                                .len = 1, .payload = &err };
+            cmd_conn_send(conn, &rsp);
+            return;
+        }
+
+        /* 注册订阅 */
+        cmd_subscription_add(sub_mgr, CMD_DATA_LOG, 0, conn);
+
+        /* 推送已缓存的日志（最多 500 条） */
+        log_ring_entry_t entries[500];
+        int count = 0;
+        log_ring_get_all(entries, &count);
+        if (count > 500) count = 500;
+
+        for (int i = 0; i < count; i++) {
+            /* 构造推送帧: [data_id 2B BE, level 1B, reserved 1B, timestamp 4B LE, msg N B] */
+            size_t msg_len = strlen(entries[i].msg);
+            size_t pld_len = 2 + 1 + 1 + 4 + msg_len;
+            uint8_t* pld = (uint8_t*)malloc(pld_len);
+            if (!pld) continue;
+
+            uint16_t id_be = htons(CMD_DATA_LOG);
+            uint8_t* p = pld;
+            memcpy(p, &id_be, 2);       p += 2;
+            *p++ = entries[i].level;
+            *p++ = entries[i].reserved;
+            memcpy(p, &entries[i].timestamp, 4);  p += 4;
+            memcpy(p, entries[i].msg, msg_len);
+
+            cmd_frame_t push;
+            push.cmd     = CMD_SYSTEM;
+            push.sub     = cmd_frame_sub_rsp(CMD_SUB_LOG_SUBSCRIBE);
+            push.len     = (uint16_t)pld_len;
+            push.payload = pld;
+
+            cmd_conn_send(conn, &push);
+            free(pld);
+        }
+
+        /* 回复确认 */
+        uint8_t ok = CMD_ERR_OK;
+        cmd_frame_t ack = { .cmd = CMD_SYSTEM, .sub = cmd_frame_sub_rsp(req->sub),
+                            .len = 1, .payload = &ok };
+        cmd_conn_send(conn, &ack);
+
+        LOG_DEBUG("Log subscription added, pushed %d buffered entries", count);
+
+    } else if (op == CMD_SUB_LOG_UNSUBSCRIBE) {
+        /* 取消日志订阅 */
+        if (sub_mgr) {
+            cmd_subscription_remove(sub_mgr, CMD_DATA_LOG, conn);
+        }
+
+        uint8_t ok = CMD_ERR_OK;
+        cmd_frame_t ack = { .cmd = CMD_SYSTEM, .sub = cmd_frame_sub_rsp(req->sub),
+                            .len = 1, .payload = &ok };
+        cmd_conn_send(conn, &ack);
+
+        LOG_DEBUG("Log subscription removed");
 
     } else {
         uint8_t err = CMD_ERR_UNKNOWN_SUB;

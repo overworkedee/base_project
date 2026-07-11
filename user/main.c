@@ -3,12 +3,14 @@
 #include "app_cmd.h"
 #include "hw/dev/dev_sht30.h"
 #include "hw/dev/dev_led.h"
+#include "cmd/cmd_transport.h"
 #include "cmd/cmd_subscription.h"
 #include "cmd/cmd_frame.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <time.h>
 #include <arpa/inet.h>  /* htonl */
 
 /* ── 硬件路径 ───────────────────────────────────────────────────────── */
@@ -86,6 +88,47 @@ static void* sensor_thread(void* arg)
     return NULL;
 }
 
+/* ── 日志推送回调 ─────────────────────────────────────────────────── */
+
+/**
+ * log 模块回调：将每条日志通过订阅管理器推送给上位机。
+ *
+ * 构造 CMD_DATA_LOG 推送帧数据并调用 cmd_subscription_push。
+ *
+ * @param level  日志等级
+ * @param msg    格式化日志消息
+ * @param ctx    订阅管理器指针
+ * @note         在 log_write_impl 持有锁时调用，不得调用 LOG_* 宏
+ */
+static void on_log_push(uint8_t level, const char* msg, void* ctx)
+{
+    cmd_subscription_mgr_t* sub_mgr = (cmd_subscription_mgr_t*)ctx;
+    if (!sub_mgr || !msg) return;
+
+    /* 构造推送数据: [level 1B, reserved 1B, timestamp 4B LE, msg N B] */
+    uint32_t ts = (uint32_t)time(NULL);
+    size_t msg_len = strlen(msg);
+    size_t data_len = 1 + 1 + 4 + msg_len;
+    uint8_t stack_buf[1024];
+    uint8_t* buf = stack_buf;
+    uint8_t* heap_buf = NULL;
+
+    if (data_len > sizeof(stack_buf)) {
+        heap_buf = (uint8_t*)malloc(data_len);
+        if (!heap_buf) return;
+        buf = heap_buf;
+    }
+
+    buf[0] = level;
+    buf[1] = 0;  /* reserved */
+    memcpy(buf + 2, &ts, 4);  /* LE timestamp */
+    memcpy(buf + 6, msg, msg_len);
+
+    cmd_subscription_push(sub_mgr, CMD_SYSTEM, CMD_DATA_LOG, buf, data_len);
+
+    if (heap_buf) free(heap_buf);
+}
+
 /* ── 清理回调 ───────────────────────────────────────────────────────── */
 
 static void cleanup(void)
@@ -156,10 +199,13 @@ int main(int argc, char *argv[])
     g_sensor_ctx.sht30   = g_sht30;
     g_sensor_ctx.sub_mgr = app_cmd_get_sub_mgr(g_cmd);
     app_cmd_register(g_cmd, CMD_SENSOR, cmd_handler_sensor, &g_sensor_ctx);
-    app_cmd_register(g_cmd, CMD_SYSTEM, cmd_handler_system, NULL);
+    app_cmd_register(g_cmd, CMD_SYSTEM, cmd_handler_system, app_cmd_get_sub_mgr(g_cmd));
+
+    /* 注册日志推送回调（必须在 app_cmd_create 之后，需要 sub_mgr） */
+    log_set_subscribe_callback(on_log_push, app_cmd_get_sub_mgr(g_cmd));
 
     /* 添加监听 */
-    app_cmd_add_listener_unix(g_cmd, "/tmp/cmd.sock");
+    app_cmd_add_listener_unix(g_cmd, CMD_DEFAULT_UNIX_SOCK_PATH);
     app_cmd_add_listener_tcp(g_cmd, 9527);
 
     /* 启动传感器采集线程 */

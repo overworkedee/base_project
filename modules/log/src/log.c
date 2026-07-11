@@ -24,7 +24,35 @@ static struct {
     _Bool           initialized;/* 是否已初始化                   */
 } g_log = { NULL, LOG_INFO, {{0}}, 0 };
 
+/* 环形缓存区 */
+static log_ring_entry_t  g_log_ring[LOG_RING_SIZE];
+static int               g_log_ring_head  = 0;  /* 下一个写入位置 */
+static int               g_log_ring_count = 0;  /* 当前条目数     */
+
+/* 订阅回调 */
+static log_subscribe_fn_t g_log_sub_cb  = NULL;
+static void*              g_log_sub_ctx = NULL;
+
 /* -- 内部函数 ------------------------------------------------------ */
+
+/**
+ * 内部：向环形缓冲区写入一条日志。
+ * 调用者必须持有 g_log.lock。
+ */
+static void _log_ring_push(uint8_t level, const char* msg)
+{
+    log_ring_entry_t* entry = &g_log_ring[g_log_ring_head];
+    entry->level     = level;
+    entry->reserved  = 0;
+    entry->timestamp = (uint32_t)time(NULL);
+    strncpy(entry->msg, msg, LOG_MSG_MAX - 1);
+    entry->msg[LOG_MSG_MAX - 1] = '\0';
+
+    g_log_ring_head = (g_log_ring_head + 1) % LOG_RING_SIZE;
+    if (g_log_ring_count < LOG_RING_SIZE) {
+        g_log_ring_count++;
+    }
+}
 
 /**
  * 内部：获取带毫秒的当前时间字符串
@@ -141,6 +169,57 @@ void log_set_level(log_level_t level)
     }
 }
 
+/* ── 订阅回调 API ────────────────────────────────────────────────── */
+
+/**
+ * 设置日志订阅回调。
+ *
+ * @param cb   回调函数指针
+ * @param ctx  用户上下文
+ * @note       线程安全（在锁内设置）
+ */
+void log_set_subscribe_callback(log_subscribe_fn_t cb, void* ctx)
+{
+    hw_err_t ret = hw_mutex_lock(&g_log.lock);
+    if (ret != HW_OK) {
+        fprintf(stderr, "log: lock failed in log_set_subscribe_callback\n");
+        return;
+    }
+    g_log_sub_cb  = cb;
+    g_log_sub_ctx = ctx;
+    hw_mutex_unlock(&g_log.lock);
+}
+
+/* ── 环形缓冲区 API ──────────────────────────────────────────────── */
+
+/**
+ * 从环形缓冲区获取所有已缓存的日志条目。
+ *
+ * @param out_entries  输出缓冲区
+ * @param out_count    输出实际条目数
+ * @note               在锁内复制，调用方不需加锁
+ */
+void log_ring_get_all(log_ring_entry_t* out_entries, int* out_count)
+{
+    if (!out_entries || !out_count) return;
+
+    hw_err_t ret = hw_mutex_lock(&g_log.lock);
+    if (ret != HW_OK) {
+        *out_count = 0;
+        return;
+    }
+
+    *out_count = g_log_ring_count;
+    if (g_log_ring_count > 0) {
+        int start = (g_log_ring_head - g_log_ring_count + LOG_RING_SIZE) % LOG_RING_SIZE;
+        for (int i = 0; i < g_log_ring_count; i++) {
+            out_entries[i] = g_log_ring[(start + i) % LOG_RING_SIZE];
+        }
+    }
+
+    hw_mutex_unlock(&g_log.lock);
+}
+
 /**
  * 反初始化日志模块
  *
@@ -239,6 +318,13 @@ void log_write_impl(log_level_t level, const char* file, int line,
     }
     if (fprintf(stdout, "%s%s\n", header, msg) < 0) {
         fprintf(stderr, "log: write to stdout failed\n");
+    }
+
+    /* 写入环形缓冲区并通知订阅回调 */
+    _log_ring_push((uint8_t)level, msg);
+
+    if (g_log_sub_cb) {
+        g_log_sub_cb((uint8_t)level, msg, g_log_sub_ctx);
     }
 
     ret = hw_mutex_unlock(&g_log.lock);

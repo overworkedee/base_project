@@ -21,6 +21,18 @@ typedef enum {
     LOG_ERROR = 3,   /* 错误，功能受损但程序可继续       */
 } log_level_t;
 
+/* ── 日志订阅回调 ────────────────────────────────────────────────── */
+
+/**
+ * 日志订阅回调函数类型。每条通过 LOG_* 宏写入的日志会调用此回调。
+ *
+ * @param level  日志等级
+ * @param msg    格式化后的完整日志消息
+ * @param ctx    用户上下文
+ * @note         回调在持有日志锁的情况下调用，回调内不应再调用 LOG_* 宏
+ */
+typedef void (*log_subscribe_fn_t)(uint8_t level, const char* msg, void* ctx);
+
 /* ── 生命周期 ────────────────────────────────────────────────────── */
 
 /**
@@ -49,6 +61,42 @@ void log_set_level(log_level_t level);
  * @note 先持有锁再执行清理，与 log_write_impl 互斥
  */
 void log_deinit(void);
+
+/**
+ * 设置日志订阅回调。
+ *
+ * 设置后，每条通过 LOG_* 宏写入的日志都会通过回调推送。
+ * 传 cb=NULL 取消回调。
+ *
+ * @param cb   回调函数指针
+ * @param ctx  用户上下文，透传给回调
+ */
+void log_set_subscribe_callback(log_subscribe_fn_t cb, void* ctx);
+
+/* ── 环形缓冲区 ──────────────────────────────────────────────────── */
+
+#define LOG_RING_SIZE  2048  /* 环形缓冲区容量（条数）               */
+#define LOG_MSG_MAX    256   /* 单条日志消息最大长度                 */
+
+/**
+ * 环形缓冲区条目。
+ */
+typedef struct {
+    uint8_t  level;
+    uint8_t  reserved;
+    uint32_t timestamp;     /* unix timestamp，LE */
+    char     msg[LOG_MSG_MAX];
+} log_ring_entry_t;
+
+/**
+ * 从环形缓冲区获取所有已缓存的日志条目。
+ *
+ * 条目按时间顺序（从旧到新）排列。
+ *
+ * @param out_entries  输出缓冲区（调用方分配）
+ * @param out_count    输出实际条目数
+ */
+void log_ring_get_all(log_ring_entry_t* out_entries, int* out_count);
 
 /* ── 底层实现（通常不直接调用）──────────────────────────────────── */
 

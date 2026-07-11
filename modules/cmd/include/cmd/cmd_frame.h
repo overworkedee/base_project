@@ -52,6 +52,9 @@ static inline uint8_t cmd_frame_sub_req(uint8_t sub) { return sub & ~CMD_SUB_RES
 
 #define CMD_DATA_TEMPERATURE  0x0001  /* 温度 °C       */
 #define CMD_DATA_HUMIDITY     0x0002  /* 湿度 %RH      */
+#define CMD_DATA_LOG          0x0003  /* 日志推送      */
+#define CMD_SUB_LOG_SUBSCRIBE     0x05  /* 订阅日志推送  */
+#define CMD_SUB_LOG_UNSUBSCRIBE   0x06  /* 取消日志订阅  */
 
 /* ── 错误码 ─────────────────────────────────────────────────────────── */
 
