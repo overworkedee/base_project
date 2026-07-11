@@ -4,7 +4,7 @@ import threading
 import re
 
 import paramiko
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QPlainTextEdit, QLineEdit, QPushButton, QLabel, QApplication,
@@ -309,25 +309,25 @@ class TerminalTab(QWidget):
         key = event.key()
         mod = event.modifiers()
 
-        if mod == event.modifier().ControlModifier & ~event.modifier().ShiftModifier:
+        if mod == Qt.KeyboardModifier.ControlModifier:
             ctrl_map = {
-                event.Key_C: b'\x03', event.Key_D: b'\x04', event.Key_Z: b'\x1a',
-                event.Key_L: b'\x0c', event.Key_A: b'\x01', event.Key_E: b'\x05',
-                event.Key_U: b'\x15', event.Key_W: b'\x17', event.Key_K: b'\x0b',
+                Qt.Key_C: b'\x03', Qt.Key_D: b'\x04', Qt.Key_Z: b'\x1a',
+                Qt.Key_L: b'\x0c', Qt.Key_A: b'\x01', Qt.Key_E: b'\x05',
+                Qt.Key_U: b'\x15', Qt.Key_W: b'\x17', Qt.Key_K: b'\x0b',
             }
             if key in ctrl_map:
                 self._worker.send(ctrl_map[key])
                 return
 
         key_map = {
-            event.Key_Return: b'\r', event.Key_Enter: b'\r',
-            event.Key_Backspace: b'\x7f',
-            event.Key_Tab: b'\t', event.Key_Escape: b'\x1b',
-            event.Key_Up: b'\x1b[A', event.Key_Down: b'\x1b[B',
-            event.Key_Right: b'\x1b[C', event.Key_Left: b'\x1b[D',
-            event.Key_Home: b'\x1b[H', event.Key_End: b'\x1b[F',
-            event.Key_Delete: b'\x1b[3~',
-            event.Key_PageUp: b'\x1b[5~', event.Key_PageDown: b'\x1b[6~',
+            Qt.Key_Return: b'\r', Qt.Key_Enter: b'\r',
+            Qt.Key_Backspace: b'\x7f',
+            Qt.Key_Tab: b'\t', Qt.Key_Escape: b'\x1b',
+            Qt.Key_Up: b'\x1b[A', Qt.Key_Down: b'\x1b[B',
+            Qt.Key_Right: b'\x1b[C', Qt.Key_Left: b'\x1b[D',
+            Qt.Key_Home: b'\x1b[H', Qt.Key_End: b'\x1b[F',
+            Qt.Key_Delete: b'\x1b[3~',
+            Qt.Key_PageUp: b'\x1b[5~', Qt.Key_PageDown: b'\x1b[6~',
         }
         if key in key_map:
             self._worker.send(key_map[key])
