@@ -3,7 +3,7 @@
 import threading
 
 import paramiko
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Qt
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QPlainTextEdit, QLineEdit, QPushButton,
@@ -67,9 +67,9 @@ class _SshWorker(QObject):
 
     def send_command(self, cmd: str) -> None:
         """ 向 SSH 通道发送命令。 """
-        if self._channel and self._channel.active:
+        if self._channel and not self._channel.closed:
             try:
-                self._channel.send(cmd + "\n")
+                self._channel.send((cmd + "\n").encode("utf-8"))
             except Exception as e:
                 self.error_occurred.emit(f"发送失败: {e}")
 
@@ -189,6 +189,7 @@ class TerminalTab(QWidget):
         self.terminal = QPlainTextEdit()
         self.terminal.setReadOnly(True)
         self.terminal.setFont(QFont("Courier New", 10))
+        self.terminal.setFocusPolicy(Qt.NoFocus)  # 不抢键盘焦点
         self.terminal.setStyleSheet("""
             QPlainTextEdit {
                 background-color: #1e1e1e;
@@ -203,10 +204,13 @@ class TerminalTab(QWidget):
         self.cmd_input = QLineEdit()
         self.cmd_input.setPlaceholderText("输入命令，按 Enter 发送...")
         self.cmd_input.returnPressed.connect(self._on_send)
+        self.cmd_input.setFocusPolicy(Qt.StrongFocus)
+        self.cmd_input.setFocus()  # 默认获取焦点
         cmd_layout.addWidget(self.cmd_input)
 
         send_btn = QPushButton("发送")
         send_btn.clicked.connect(self._on_send)
+        send_btn.setFocusPolicy(Qt.NoFocus)  # 按钮不抢焦点
         cmd_layout.addWidget(send_btn)
 
         layout.addLayout(cmd_layout)
