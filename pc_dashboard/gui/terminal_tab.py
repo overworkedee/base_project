@@ -1,31 +1,19 @@
-""" SSH 终端标签页 —— 通过 paramiko 连接开发板执行命令 """
+""" SSH 终端标签页 —— 仿真终端，按键直接发送到远程 shell """
 
 import threading
+import re
 
 import paramiko
-from PySide6.QtCore import QObject, Signal, Qt
+from PySide6.QtCore import QObject, Signal, Qt, QTimer
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
-    QPlainTextEdit, QLineEdit, QPushButton,
-    QLabel, QApplication,
+    QPlainTextEdit, QPushButton, QLabel, QLineEdit, QApplication,
 )
-from PySide6.QtGui import QFont, QTextCursor, QColor
+from PySide6.QtGui import QFont, QTextCursor, QKeyEvent, QColor
 
 
 class _SshWorker(QObject):
-    """
-    SSH 后台工作线程，通过 paramiko 管理 SSH 会话。
-
-    线程模型:
-      - connect() 启动 daemon 线程建立连接并循环读取
-      - send_command() 从主线程写入 SSH channel
-      - 输出通过 Qt Signals 跨线程通知 GUI
-
-    Signals:
-      output_received(str)    — 终端输出文本（ANSI 已过滤）
-      connection_changed(bool) — True=已连接 False=已断开
-      error_occurred(str)     — 错误消息（连接失败等）
-    """
+    """ SSH 后台线程——建立连接、读取输出、发送按键。 """
 
     output_received = Signal(str)
     connection_changed = Signal(bool)
@@ -33,13 +21,14 @@ class _SshWorker(QObject):
 
     def __init__(self):
         super().__init__()
-        self._client: paramiko.SSHClient | None = None
-        self._channel: paramiko.Channel | None = None
+        self._client = None
+        self._channel = None
         self._running = False
-        self._thread: threading.Thread | None = None
+        self._thread = None
 
-    def connect(self, host: str, port: int, username: str, password: str) -> None:
-        """ 启动后台连接线程。 """
+    def connect(self, host, port, username, password):
+        """ 后台连接。 """
+        self.disconnect()
         self._running = True
         self._thread = threading.Thread(
             target=self._connect_thread,
@@ -48,33 +37,37 @@ class _SshWorker(QObject):
         )
         self._thread.start()
 
-    def disconnect(self) -> None:
-        """ 断开 SSH 连接。 """
+    def disconnect(self):
+        """ 断开。 """
         self._running = False
         if self._channel:
-            try:
-                self._channel.close()
-            except Exception:
-                pass
+            try: self._channel.close()
+            except Exception: pass
             self._channel = None
         if self._client:
-            try:
-                self._client.close()
-            except Exception:
-                pass
+            try: self._client.close()
+            except Exception: pass
             self._client = None
         self.connection_changed.emit(False)
 
-    def send_command(self, cmd: str) -> None:
-        """ 向 SSH 通道发送命令。 """
+    def send(self, data: bytes):
+        """ 发送原始字节到 SSH 通道。 """
         if self._channel and not self._channel.closed:
             try:
-                self._channel.send((cmd + "\n").encode("utf-8"))
+                self._channel.send(data)
             except Exception as e:
                 self.error_occurred.emit(f"发送失败: {e}")
 
-    def _connect_thread(self, host: str, port: int, username: str, password: str) -> None:
-        """ 后台线程：建立 SSH 连接并循环读取输出。 """
+    def resize_pty(self, cols: int, rows: int):
+        """ 调整 PTY 大小。 """
+        if self._channel and not self._channel.closed:
+            try:
+                self._channel.resize_pty(width=cols, height=rows)
+            except Exception:
+                pass
+
+    def _connect_thread(self, host, port, username, password):
+        """ 后台线程：连接 SSH + invoke_shell + 循环读取。 """
         try:
             self._client = paramiko.SSHClient()
             self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -83,30 +76,28 @@ class _SshWorker(QObject):
                 username=username, password=password,
                 timeout=5, allow_agent=False, look_for_keys=False,
             )
+            # invoke_shell 创建一个 PTY，shell 在里面运行
             self._channel = self._client.invoke_shell(
                 term='xterm-256color', width=120, height=40,
             )
-            self._channel.settimeout(0.5)
+            self._channel.settimeout(0.3)
             self.connection_changed.emit(True)
         except Exception as e:
             self.error_occurred.emit(f"SSH 连接失败: {e}")
             self._running = False
             return
 
-        # 循环读取 SSH 输出
+        # 循环读取
         buf = bytearray()
         while self._running and self._channel and not self._channel.closed:
             try:
                 chunk = self._channel.recv(4096)
                 if chunk:
                     buf.extend(chunk)
-                    # 尝试 UTF-8 解码并发送到前端
                     try:
                         text = buf.decode('utf-8', errors='replace')
                         if text:
-                            # 去掉 ANSI 转义序列（简单实现）
-                            clean = self._strip_ansi(text)
-                            self.output_received.emit(clean)
+                            self.output_received.emit(text)
                         buf.clear()
                     except Exception:
                         pass
@@ -117,24 +108,19 @@ class _SshWorker(QObject):
             except Exception:
                 break
 
-        # 通道关闭
         self._running = False
         self.connection_changed.emit(False)
-
-    @staticmethod
-    def _strip_ansi(text: str) -> str:
-        """ 简单的 ANSI 转义序列过滤器。 """
-        import re
-        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-        return ansi_escape.sub('', text)
 
 
 class TerminalTab(QWidget):
     """
-    SSH 终端页面 —— 通过 paramiko SSH 到开发板执行命令。
+    SSH 仿真终端 —— 直接在终端区域输入命令，体验类似 xshell/putty。
 
-    与 cmd 协议独立，不依赖 CmdClient 连接状态。输入命令按 Enter 发送，
-    输出实时显示在暗色终端区域。支持 ANSI 转义序列过滤。
+    实现原理：
+      - paramiko invoke_shell() 在远程开一个 PTY（bash）
+      - 用户每次按键 → _channel.send(bytes) 发送到 PTY
+      - bash 解释按键（包括回显）→ 输出通过 _channel.recv() 读取
+      - 输出追加到 QPlainTextEdit 中显示
     """
 
     def __init__(self):
@@ -142,134 +128,191 @@ class TerminalTab(QWidget):
         self._worker = _SshWorker()
         self._connected = False
 
+        # 受保护区域长度：之前的内容不可编辑
+        self._locked_pos = 0
+
         self._setup_ui()
         self._connect_signals()
 
-    def _setup_ui(self) -> None:
+    def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(4, 4, 4, 4)
 
         # ── 连接栏 ──
-        conn_layout = QHBoxLayout()
+        bar = QHBoxLayout()
+        bar.addWidget(QLabel("Host:"))
+        self.host = QLineEdit_clone("192.168.3.171", 130, bar)
 
-        conn_layout.addWidget(QLabel("Host:"))
-        self.host_input = QLineEdit("192.168.3.171")
-        self.host_input.setFixedWidth(130)
-        conn_layout.addWidget(self.host_input)
+        bar.addWidget(QLabel("User:"))
+        self.user = QLineEdit_clone("orangepi", 80, bar)
 
-        conn_layout.addWidget(QLabel("User:"))
-        self.user_input = QLineEdit("orangepi")
-        self.user_input.setFixedWidth(80)
-        conn_layout.addWidget(self.user_input)
-
-        conn_layout.addWidget(QLabel("Pwd:"))
-        self.pwd_input = QLineEdit("orangepi")
-        self.pwd_input.setEchoMode(QLineEdit.Password)
-        self.pwd_input.setFixedWidth(80)
-        conn_layout.addWidget(self.pwd_input)
+        bar.addWidget(QLabel("Pwd:"))
+        self.pwd = QLineEdit_clone("orangepi", 80, bar)
+        self.pwd.setEchoMode(QLineEdit.Password)
 
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.clicked.connect(self._on_connect)
-        conn_layout.addWidget(self.connect_btn)
+        bar.addWidget(self.connect_btn)
 
         self.disconnect_btn = QPushButton("Disconnect")
         self.disconnect_btn.clicked.connect(self._on_disconnect)
         self.disconnect_btn.setEnabled(False)
-        conn_layout.addWidget(self.disconnect_btn)
+        bar.addWidget(self.disconnect_btn)
 
-        conn_layout.addStretch()
+        bar.addStretch()
+        self.status_lbl = QLabel("⚫")
+        bar.addWidget(self.status_lbl)
+        layout.addLayout(bar)
 
-        self.status_label = QLabel("⚫ 未连接")
-        self.status_label.setStyleSheet("color: #95a5a6; font-weight: bold;")
-        conn_layout.addWidget(self.status_label)
-
-        layout.addLayout(conn_layout)
-
-        # ── 终端输出区 ──
-        self.terminal = QPlainTextEdit()
-        self.terminal.setReadOnly(True)
-        self.terminal.setFont(QFont("Courier New", 10))
-        self.terminal.setFocusPolicy(Qt.NoFocus)  # 不抢键盘焦点
-        self.terminal.setStyleSheet("""
+        # ── 终端区域（可编辑，直接输入） ──
+        self.term = QPlainTextEdit()
+        self.term.setFont(QFont("Courier New", 11))
+        self.term.setStyleSheet("""
             QPlainTextEdit {
                 background-color: #1e1e1e;
                 color: #d4d4d4;
                 border: 1px solid #3c3c3c;
+                selection-background-color: #264f78;
             }
         """)
-        layout.addWidget(self.terminal, stretch=1)
+        self.term.setCursorWidth(8)  # 粗光标
+        self.term.installEventFilter(self)
+        self.term.setFocus()
+        layout.addWidget(self.term)
 
-        # ── 命令输入栏 ──
-        cmd_layout = QHBoxLayout()
-        self.cmd_input = QLineEdit()
-        self.cmd_input.setPlaceholderText("输入命令，按 Enter 发送...")
-        self.cmd_input.returnPressed.connect(self._on_send)
-        self.cmd_input.setFocusPolicy(Qt.StrongFocus)
-        self.cmd_input.setFocus()  # 默认获取焦点
-        cmd_layout.addWidget(self.cmd_input)
-
-        send_btn = QPushButton("发送")
-        send_btn.clicked.connect(self._on_send)
-        send_btn.setFocusPolicy(Qt.NoFocus)  # 按钮不抢焦点
-        cmd_layout.addWidget(send_btn)
-
-        layout.addLayout(cmd_layout)
-
-    def _connect_signals(self) -> None:
+    def _connect_signals(self):
         self._worker.output_received.connect(self._on_output)
         self._worker.connection_changed.connect(self._on_connection)
         self._worker.error_occurred.connect(self._on_error)
 
-    def _on_connect(self) -> None:
-        """ 建立 SSH 连接。 """
-        host = self.host_input.text().strip()
-        user = self.user_input.text().strip()
-        pwd = self.pwd_input.text().strip()
+    # ── 事件过滤器：拦截终端中的按键 → 发送到 SSH ──────────────
 
-        self.terminal.clear()
-        self.terminal.appendPlainText(f"正在连接 {user}@{host} ...\n")
-        QApplication.processEvents()
+    def eventFilter(self, obj, event):
+        if obj is not self.term or not self._connected:
+            return super().eventFilter(obj, event)
 
-        self.connect_btn.setEnabled(False)
-        self._worker.connect(host, 22, user, pwd)
+        if event.type() == event.Type.KeyPress:
+            return self._handle_key(event)
+        return super().eventFilter(obj, event)
 
-    def _on_disconnect(self) -> None:
-        """ 断开 SSH 连接。 """
-        self._worker.disconnect()
-        self.terminal.appendPlainText("\n--- 连接已断开 ---\n")
+    def _handle_key(self, event: QKeyEvent) -> bool:
+        """ 将按键转发到 SSH PTY。返回 True 表示事件已处理。 """
+        key = event.key()
+        modifiers = event.modifiers()
 
-    def _on_output(self, text: str) -> None:
-        """ 收到 SSH 输出，追加到终端。 """
-        self.terminal.moveCursor(QTextCursor.End)
-        self.terminal.insertPlainText(text)
+        # 组合键映射
+        if modifiers == Qt.ControlModifier:
+            ctrl_map = {
+                Qt.Key_C: b'\x03',    # Ctrl+C → SIGINT
+                Qt.Key_D: b'\x04',    # Ctrl+D → EOF
+                Qt.Key_Z: b'\x1a',    # Ctrl+Z → SIGTSTP
+                Qt.Key_L: b'\x0c',    # Ctrl+L → clear screen
+                Qt.Key_A: b'\x01',    # Ctrl+A → home
+                Qt.Key_E: b'\x05',    # Ctrl+E → end
+                Qt.Key_U: b'\x15',    # Ctrl+U → kill line
+                Qt.Key_W: b'\x17',    # Ctrl+W → kill word
+                Qt.Key_K: b'\x0b',    # Ctrl+K → kill to end
+            }
+            if key in ctrl_map:
+                self._worker.send(ctrl_map[key])
+                return True
+
+        # 普通按键映射
+        if key in (Qt.Key_Return, Qt.Key_Enter):
+            self._worker.send(b'\r')   # CR
+            return True
+        elif key == Qt.Key_Backspace:
+            self._worker.send(b'\x7f')
+            return True
+        elif key == Qt.Key_Tab:
+            self._worker.send(b'\t')
+            return True
+        elif key == Qt.Key_Escape:
+            self._worker.send(b'\x1b')
+            return True
+        elif key == Qt.Key_Up:
+            self._worker.send(b'\x1b[A')
+            return True
+        elif key == Qt.Key_Down:
+            self._worker.send(b'\x1b[B')
+            return True
+        elif key == Qt.Key_Right:
+            self._worker.send(b'\x1b[C')
+            return True
+        elif key == Qt.Key_Left:
+            self._worker.send(b'\x1b[D')
+            return True
+        elif key == Qt.Key_Home:
+            self._worker.send(b'\x1b[H')
+            return True
+        elif key == Qt.Key_End:
+            self._worker.send(b'\x1b[F')
+            return True
+        elif key == Qt.Key_Delete:
+            self._worker.send(b'\x1b[3~')
+            return True
+
+        # 普通可打印字符
+        text = event.text()
+        if text and len(text) == 1 and ord(text) >= 0x20:
+            self._worker.send(text.encode('utf-8'))
+            return True
+
+        return super().eventFilter(self.term, event)
+
+    # ── 槽函数 ──────────────────────────────────────────────
+
+    def _on_output(self, text: str):
+        """ SSH 输出追加到终端。替换 QPlainTextEdit 内容避免光标跳动。 """
+        tc = self.term.textCursor()
+        tc.movePosition(tc.MoveOperation.End)
+        tc.insertText(text)
         # 自动滚动到底部
-        scrollbar = self.terminal.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        sb = self.term.verticalScrollBar()
+        sb.setValue(sb.maximum())
 
-    def _on_connection(self, connected: bool) -> None:
-        """ 连接状态变化。 """
+    def _on_connection(self, connected: bool):
         self._connected = connected
         if connected:
-            self.status_label.setText("● 已连接")
-            self.status_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+            self.status_lbl.setText("● 已连接")
+            self.status_lbl.setStyleSheet("color: #27ae60; font-weight: bold;")
             self.connect_btn.setEnabled(False)
             self.disconnect_btn.setEnabled(True)
-            self.cmd_input.setFocus()
+            self.term.setFocus()
+            QTimer.singleShot(200, lambda: self._worker.resize_pty(120, 40))
         else:
-            self.status_label.setText("⚫ 未连接")
-            self.status_label.setStyleSheet("color: #95a5a6; font-weight: bold;")
+            self.status_lbl.setText("⚫ 未连接")
+            self.status_lbl.setStyleSheet("color: #95a5a6;")
             self.connect_btn.setEnabled(True)
             self.disconnect_btn.setEnabled(False)
 
-    def _on_error(self, msg: str) -> None:
-        """ 显示错误消息。 """
-        self.terminal.appendPlainText(f"\n[ERROR] {msg}\n")
+    def _on_error(self, msg: str):
+        tc = self.term.textCursor()
+        tc.movePosition(tc.MoveOperation.End)
+        tc.insertText(f"\n[ERROR] {msg}\n")
         self.connect_btn.setEnabled(True)
 
-    def _on_send(self) -> None:
-        """ 发送命令。 """
-        cmd = self.cmd_input.text()
-        if not cmd.strip():
-            return
-        self._worker.send_command(cmd)
-        self.cmd_input.clear()
+    def _on_connect(self):
+        host = self.host.text().strip()
+        user = self.user.text().strip()
+        pwd = self.pwd.text().strip()
+        self.term.clear()
+        tc = self.term.textCursor()
+        tc.insertText(f"Connecting to {user}@{host} ...\n")
+        self.connect_btn.setEnabled(False)
+        self._worker.connect(host, 22, user, pwd)
+
+    def _on_disconnect(self):
+        self._worker.disconnect()
+        tc = self.term.textCursor()
+        tc.movePosition(tc.MoveOperation.End)
+        tc.insertText("\n--- Disconnected ---\n")
+
+
+# ── 辅助：快速创建 QLineEdit ──────────────────────────────────
+
+def QLineEdit_clone(text, width, layout):
+    w = QLineEdit(text)
+    w.setFixedWidth(width)
+    layout.addWidget(w)
+    return w
