@@ -20,6 +20,14 @@
 
 /* ── Unix Socket ────────────────────────────────────────────────────── */
 
+/**
+ * 创建并监听 Unix Domain Socket。
+ *
+ * 自动 unlink 旧文件、bind、listen(32) 后返回监听 fd。
+ *
+ * @param path  socket 文件路径，如 "/tmp/cmd.sock"
+ * @return      成功返回 fd（≥0），失败返回 -1
+ */
 int cmd_transport_listen_unix(const char* path)
 {
     if (!path) return -1;
@@ -56,6 +64,14 @@ int cmd_transport_listen_unix(const char* path)
 
 /* ── TCP Socket ─────────────────────────────────────────────────────── */
 
+/**
+ * 创建并监听 TCP Socket。
+ *
+ * 绑定 0.0.0.0:port，设置 SO_REUSEADDR 避免 TIME_WAIT 导致 bind 失败。
+ *
+ * @param port  监听端口号
+ * @return      成功返回 fd（≥0），失败返回 -1
+ */
 int cmd_transport_listen_tcp(uint16_t port)
 {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -92,6 +108,12 @@ int cmd_transport_listen_tcp(uint16_t port)
 
 /* ── Accept / Close ─────────────────────────────────────────────────── */
 
+/**
+ * 阻塞接受一个新连接。
+ *
+ * @param listen_fd  监听文件描述符
+ * @return           成功返回客户端 fd（≥0），失败返回 -1
+ */
 int cmd_transport_accept(int listen_fd)
 {
     int client_fd = accept(listen_fd, NULL, NULL);
@@ -103,6 +125,11 @@ int cmd_transport_accept(int listen_fd)
     return client_fd;
 }
 
+/**
+ * 关闭 socket 连接。
+ *
+ * @param fd  待关闭的文件描述符（负数安全）
+ */
 void cmd_transport_close(int fd)
 {
     if (fd >= 0) {

@@ -75,6 +75,12 @@ static data_stream_t* _ensure_stream(cmd_subscription_mgr_t* mgr, uint16_t data_
 
 /* ── 公开 API ───────────────────────────────────────────────────────── */
 
+/**
+ * 创建订阅管理器实例。
+ *
+ * @return 成功返回实例指针，失败返回 NULL
+ * @note   内部初始化互斥锁，线程安全
+ */
 cmd_subscription_mgr_t* cmd_subscription_create(void)
 {
     cmd_subscription_mgr_t* mgr = (cmd_subscription_mgr_t*)calloc(1, sizeof(*mgr));
@@ -82,6 +88,12 @@ cmd_subscription_mgr_t* cmd_subscription_create(void)
     return mgr;
 }
 
+/**
+ * 销毁订阅管理器，释放所有 data_stream 和 sub_node。
+ *
+ * @param mgr  订阅管理器实例
+ * @note       调用前确保没有线程在使用该管理器
+ */
 void cmd_subscription_destroy(cmd_subscription_mgr_t* mgr)
 {
     if (!mgr) return;
@@ -104,6 +116,18 @@ void cmd_subscription_destroy(cmd_subscription_mgr_t* mgr)
     free(mgr);
 }
 
+/**
+ * 添加或更新一个订阅。
+ *
+ * 相同 (data_id, conn) 重复添加视为更新 interval_ms。
+ * 内部加锁，线程安全。
+ *
+ * @param mgr          订阅管理器
+ * @param data_id      数据流 ID（CMD_DATA_TEMPERATURE 等）
+ * @param interval_ms  推送间隔（毫秒），0 表示事件驱动
+ * @param conn         订阅者连接
+ * @return             0 成功，-1 参数无效或分配失败
+ */
 int cmd_subscription_add(cmd_subscription_mgr_t* mgr, uint16_t data_id,
                          uint32_t interval_ms, cmd_conn_t* conn)
 {
@@ -150,6 +174,15 @@ int cmd_subscription_add(cmd_subscription_mgr_t* mgr, uint16_t data_id,
     return 0;
 }
 
+/**
+ * 移除指定 data_id 上的指定订阅者。
+ *
+ * @param mgr      订阅管理器
+ * @param data_id  数据流 ID
+ * @param conn     订阅者连接
+ * @return         0 成功，-1 未找到
+ * @note           线程安全
+ */
 int cmd_subscription_remove(cmd_subscription_mgr_t* mgr, uint16_t data_id,
                             cmd_conn_t* conn)
 {
@@ -179,6 +212,20 @@ int cmd_subscription_remove(cmd_subscription_mgr_t* mgr, uint16_t data_id,
     return -1;
 }
 
+/**
+ * 向所有订阅了指定 data_id 的连接推送数据帧。
+ *
+ * 内部组推送帧（PAYLOAD=[data_id 2B BE | value]），遍历订阅者链表发送。
+ * 接口设计允许同一 data_id 下不同 cmd 的推送。
+ *
+ * @param mgr        订阅管理器
+ * @param cmd        命令大类（CMD_SENSOR 或 CMD_SYSTEM）
+ * @param data_id    数据流 ID
+ * @param value      数据值（已为大端序）
+ * @param value_len  数据值长度（字节）
+ * @return           成功推送的连接数
+ * @note             线程安全
+ */
 int cmd_subscription_push(cmd_subscription_mgr_t* mgr, uint8_t cmd,
                           uint16_t data_id, const uint8_t* value,
                           size_t value_len)
@@ -221,6 +268,13 @@ int cmd_subscription_push(cmd_subscription_mgr_t* mgr, uint8_t cmd,
     return count;
 }
 
+/**
+ * 移除指定连接在所有 data_id 上的全部订阅（连接关闭时调用）。
+ *
+ * @param mgr   订阅管理器
+ * @param conn  待清理的连接
+ * @note        线程安全
+ */
 void cmd_subscription_remove_all(cmd_subscription_mgr_t* mgr, cmd_conn_t* conn)
 {
     if (!mgr || !conn) return;

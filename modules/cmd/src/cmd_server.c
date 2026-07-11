@@ -458,6 +458,17 @@ void cmd_server_stop(cmd_server_t* s)
 
 /* ── 连接操作 ───────────────────────────────────────────────────────── */
 
+/**
+ * 向指定连接发送一帧（线程安全）。
+ *
+ * 内部调用 cmd_protocol_pack 组包，将结果加入连接的 tx_queue 链表，
+ * 并注册 EPOLLOUT 事件通知 event loop 写出。
+ *
+ * @param conn   目标连接（不可为 NULL）
+ * @param frame  待发送的帧（调用后可随即释放）
+ * @return       0 成功，-1 组包出错或内存不足
+ * @note         可在 handler 回调或任意线程中调用（tx_queue 受 tx_lock 保护）
+ */
 int cmd_conn_send(cmd_conn_t* conn, const cmd_frame_t* frame)
 {
     if (!conn || !frame) return -1;
@@ -506,6 +517,14 @@ int cmd_conn_send(cmd_conn_t* conn, const cmd_frame_t* frame)
     return 0;
 }
 
+/**
+ * 主动关闭一条连接。
+ *
+ * 从 epoll 移除、关闭 fd、清理 tx_queue、释放连接资源。
+ *
+ * @param s     服务器实例
+ * @param conn  待关闭的连接
+ */
 void cmd_conn_close(cmd_server_t* s, cmd_conn_t* conn)
 {
     if (s && conn) _close_conn(s, conn);

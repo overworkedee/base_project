@@ -18,6 +18,19 @@
 
 #include <string.h>
 
+/**
+ * LED 命令处理器（CMD=0x01）。
+ *
+ * ctx 应为 led_t* 硬件句柄（可为 NULL，此时所有操作返回 CMD_ERR_HARDWARE）。
+ *
+ * 子命令:
+ *   WRITE(0x01): PAYLOAD=[led_id 1B, state 1B]  0=关 1=开 → 调用 led_on/led_off
+ *   READ (0x02): PAYLOAD=[led_id 1B]             → 返回 [err, led_id, state]
+ *
+ * @param req   请求帧
+ * @param conn  来源连接
+ * @param ctx   led_t* 句柄
+ */
 void cmd_handler_led(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 {
     led_t* led = (led_t*)ctx;

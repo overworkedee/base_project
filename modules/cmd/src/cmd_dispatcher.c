@@ -43,6 +43,12 @@ static void _send_error(cmd_conn_t* conn, uint8_t req_cmd, uint8_t req_sub,
 
 /* ── 公开 API ───────────────────────────────────────────────────────── */
 
+/**
+ * 创建命令调度器实例。
+ *
+ * @param sub_mgr  订阅管理器指针（可为 NULL，传入后可通过 get_sub_mgr 获取）
+ * @return         成功返回实例，失败返回 NULL
+ */
 cmd_dispatcher_t* cmd_dispatcher_create(cmd_subscription_mgr_t* sub_mgr)
 {
     cmd_dispatcher_t* d = (cmd_dispatcher_t*)calloc(1, sizeof(cmd_dispatcher_t));
@@ -52,11 +58,28 @@ cmd_dispatcher_t* cmd_dispatcher_create(cmd_subscription_mgr_t* sub_mgr)
     return d;
 }
 
+/**
+ * 销毁调度器并释放内存。
+ *
+ * @param d  调度器实例
+ */
 void cmd_dispatcher_destroy(cmd_dispatcher_t* d)
 {
     free(d);
 }
 
+/**
+ * 注册命令处理函数及其上下文。
+ *
+ * 每个 CMD 大类最多注册一个 handler。扩展新功能只需调用此函数，
+ * 无需修改 dispatcher 本身。
+ *
+ * @param d       调度器实例
+ * @param cmd     命令大类（0x01~0xFF，直接作为数组索引）
+ * @param handler 处理函数
+ * @param ctx     用户上下文（透传给 handler，可为 NULL）
+ * @return        0 成功，-1 参数无效或已注册
+ */
 int cmd_dispatcher_register(cmd_dispatcher_t* d, uint8_t cmd,
                             cmd_handler_fn handler, void* ctx)
 {
@@ -69,6 +92,16 @@ int cmd_dispatcher_register(cmd_dispatcher_t* d, uint8_t cmd,
     return 0;
 }
 
+/**
+ * 分发请求帧到对应的 handler。
+ *
+ * 按 req->cmd 查路由表，找到则调用 handler(req, conn, ctx)。
+ * 未注册的 CMD 自动回复 CMD_ERR_UNKNOWN_CMD 错误帧。
+ *
+ * @param d     调度器实例
+ * @param req   请求帧
+ * @param conn  来源连接
+ */
 void cmd_dispatcher_dispatch(cmd_dispatcher_t* d, const cmd_frame_t* req,
                              cmd_conn_t* conn)
 {
@@ -86,6 +119,12 @@ void cmd_dispatcher_dispatch(cmd_dispatcher_t* d, const cmd_frame_t* req,
     entry->handler(req, conn, entry->ctx);
 }
 
+/**
+ * 获取调度器内的订阅管理器指针。
+ *
+ * @param d  调度器实例
+ * @return   订阅管理器指针（创建时传入，可为 NULL）
+ */
 cmd_subscription_mgr_t* cmd_dispatcher_get_sub_mgr(cmd_dispatcher_t* d)
 {
     return d ? d->sub_mgr : NULL;

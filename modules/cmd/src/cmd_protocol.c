@@ -16,6 +16,17 @@
 
 /* ── 组包 ───────────────────────────────────────────────────────────── */
 
+/**
+ * 将 cmd_frame_t 序列化为二进制帧写入 buf。
+ *
+ * 帧格式: HEAD(0xA5 0x5A) + LEN(2B BE) + CMD(1B) + SUB(1B) + PAYLOAD + CRC(XOR)
+ *
+ * @param frame    待打包的帧
+ * @param buf      输出缓冲区
+ * @param buf_cap  输出缓冲区容量
+ * @param out_len  输出参数，实际写入的字节数
+ * @return         0 成功，-1 缓冲区不足
+ */
 int cmd_protocol_pack(const cmd_frame_t* frame, uint8_t* buf, size_t buf_cap,
                       size_t* out_len)
 {
@@ -55,6 +66,17 @@ int cmd_protocol_pack(const cmd_frame_t* frame, uint8_t* buf, size_t buf_cap,
 
 /* ── 拆包 ───────────────────────────────────────────────────────────── */
 
+/**
+ * 从字节流中尝试解析一帧（帧同步 + CRC 校验）。
+ *
+ * 支持跳过前导非 0xA5 字节和错误帧。CRC 不匹配时跳过 1 字节重试。
+ *
+ * @param data      输入字节流
+ * @param data_len  可用字节数
+ * @param frame     输出，解析出的帧（payload 由 malloc 分配）
+ * @param consumed  输出，实际消费的字节数
+ * @return          0=完整帧  1=数据不足  -1=校验失败
+ */
 int cmd_protocol_parse(const uint8_t* data, size_t data_len, cmd_frame_t* frame,
                        size_t* consumed)
 {
@@ -132,6 +154,11 @@ int cmd_protocol_parse(const uint8_t* data, size_t data_len, cmd_frame_t* frame,
 
 /* ── 释放 ───────────────────────────────────────────────────────────── */
 
+/**
+ * 释放 cmd_protocol_parse 分配的 payload 内存。
+ *
+ * @param frame  待释放的帧（重复调用安全）
+ */
 void cmd_protocol_free_frame(cmd_frame_t* frame)
 {
     if (frame && frame->payload) {

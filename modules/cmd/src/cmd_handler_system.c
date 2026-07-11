@@ -2,8 +2,12 @@
  * cmd_handler_system.c -- 系统命令处理器
  *
  * 处理 CMD=0x03:
- *   SUB=0x02 查询系统信息: 返回版本字符串
- *   SUB=0x03 设置日志等级: PAYLOAD=[level 1B] 0=DEBUG 1=INFO 2=WARN 3=ERROR
+ *   SUB=0x02 (READ)              查询系统信息 → 返回版本字符串
+ *   SUB=0x03 (SET_LOGLEVEL)      设置日志等级 → PAYLOAD=[level 1B] 0=DEBUG..3=ERROR
+ *   SUB=0x05 (LOG_SUBSCRIBE)     订阅日志推送 → 先回放缓冲区(≤500条)再注册实时推送
+ *   SUB=0x06 (LOG_UNSUBSCRIBE)   取消日志订阅
+ *
+ * ctx 应为 cmd_subscription_mgr_t*（日志订阅需要）
  */
 
 #define _GNU_SOURCE
@@ -19,6 +23,15 @@
 
 #define APP_VERSION  "1.0.0"
 
+/**
+ * 系统命令处理器（CMD=0x03）。
+ *
+ * ctx 应为 cmd_subscription_mgr_t*（用于日志订阅，系统信息查询不需要）。
+ *
+ * @param req   请求帧
+ * @param conn  来源连接
+ * @param ctx   cmd_subscription_mgr_t* 句柄
+ */
 void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 {
     cmd_subscription_mgr_t* sub_mgr = (cmd_subscription_mgr_t*)ctx;

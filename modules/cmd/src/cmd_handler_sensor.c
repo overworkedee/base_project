@@ -28,6 +28,19 @@ typedef struct {
     cmd_subscription_mgr_t*   sub_mgr;
 } sensor_handler_ctx_t;
 
+/**
+ * 传感器命令处理器（CMD=0x02）。
+ *
+ * ctx 应为 sensor_handler_ctx_t*，包含 sht30_t* 硬件句柄和 cmd_subscription_mgr_t*。
+ * 子命令:
+ *   READ       (0x02): 返回当前温湿度 [temp float BE, hum float BE]
+ *   SUBSCRIBE  (0x03): PAYLOAD=[data_id 2B BE, interval_ms 2B BE]
+ *   UNSUBSCRIBE(0x04): PAYLOAD=[data_id 2B BE]
+ *
+ * @param req   请求帧
+ * @param conn  来源连接
+ * @param ctx   sensor_handler_ctx_t* 句柄
+ */
 void cmd_handler_sensor(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 {
     sensor_handler_ctx_t* sctx = (sensor_handler_ctx_t*)ctx;

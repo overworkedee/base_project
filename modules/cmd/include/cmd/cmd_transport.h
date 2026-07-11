@@ -8,6 +8,13 @@ extern "C" {
 #endif
 
 /**
+ * 默认 Unix Domain Socket 路径。
+ *
+ * 所有无需自定义路径的地方可直接使用此宏，保证一致性。
+ */
+#define CMD_DEFAULT_UNIX_SOCK_PATH  "/tmp/cmd.sock"
+
+/**
  * 传输类型枚举。
  */
 typedef enum {
