@@ -7,7 +7,9 @@ import paramiko
 
 # ── ANSI 转义序列过滤器 ──────────────────────────────────────────
 
-_ANSI_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+# 匹配 ANSI 转义序列：OSC (\x1b]...\x07) / CSI (\x1b[...m) / 单字符 (\x1bM 等)
+# OSC 必须在前，否则 ] 被 [@-Z] 误匹配为单字符序列
+_ANSI_RE = re.compile(r'\x1B(?:][^\x07]*\x07|\[[0-?]*[ -/]*[@-~]|[@-Z\\-_])')
 
 
 def _strip_ansi(text: str) -> str:
@@ -36,8 +38,8 @@ class _SshWorker(QObject):
         self._thread = None
 
     def connect(self, host, port, username, password):
-        """ 后台连接。 """
-        self.disconnect()
+        """ 后台连接。先静默关闭旧连接（不 emit 信号），再启动新线程。 """
+        self._close_quiet()
         self._running = True
         self._thread = threading.Thread(
             target=self._connect_thread,
@@ -47,7 +49,12 @@ class _SshWorker(QObject):
         self._thread.start()
 
     def disconnect(self):
-        """ 断开。 """
+        """ 用户主动断开——关闭连接并通知 GUI。 """
+        self._close_quiet()
+        self.connection_changed.emit(False)
+
+    def _close_quiet(self):
+        """ 内部：静默清理旧连接（不发信号），线程安全。 """
         self._running = False
         if self._channel:
             try: self._channel.close()
@@ -57,7 +64,6 @@ class _SshWorker(QObject):
             try: self._client.close()
             except Exception: pass
             self._client = None
-        self.connection_changed.emit(False)
 
     def send(self, data: bytes):
         """ 发送原始字节到 SSH 通道。 """
@@ -116,7 +122,8 @@ class _SshWorker(QObject):
                     break
             except paramiko.buffered_pipe.PipeTimeout:
                 continue
-            except Exception:
+            except Exception as e:
+                self.error_occurred.emit(f"读取错误: {e}")
                 break
 
         self._running = False
