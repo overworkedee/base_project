@@ -13,6 +13,7 @@ from pc_dashboard.models.log_model import LogModel
 from pc_dashboard.gui.dashboard_tab import DashboardTab
 from pc_dashboard.gui.log_tab import LogTab
 from pc_dashboard.gui.system_tab import SystemTab
+from pc_dashboard.gui.terminal_tab import TerminalTab
 
 CONNECTED_STYLE = "color: #27ae60; font-weight: bold;"
 DISCONNECTED_STYLE = "color: #e74c3c; font-weight: bold;"
@@ -87,10 +88,12 @@ class MainWindow(QMainWindow):
         self.dashboard_tab = DashboardTab(self.sensor_model, self.led_model)
         self.log_tab = LogTab(self.log_model)
         self.system_tab = SystemTab(self.system_model)
+        self.terminal_tab = TerminalTab()
 
         self.tabs.addTab(self.dashboard_tab, "仪表盘")
         self.tabs.addTab(self.log_tab, "日志")
         self.tabs.addTab(self.system_tab, "系统")
+        self.tabs.addTab(self.terminal_tab, "终端")
 
         main_layout.addWidget(self.tabs, stretch=1)
 
@@ -168,4 +171,5 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         """ 窗口关闭时断开连接。 """
         self.client.disconnect()
+        self.terminal_tab._worker.disconnect()
         super().closeEvent(event)
