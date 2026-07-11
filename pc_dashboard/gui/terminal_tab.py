@@ -42,7 +42,13 @@ class _SshWorker(QObject):
 
     def connect(self, host, port, username, password):
         """ 阻塞建立 SSH 连接（在后台线程中调用）。 """
-        self.disconnect()
+        # 静默清理旧连接，不 emit 信号
+        with self._lock:
+            if self._client:
+                try: self._client.close()
+                except Exception: pass
+                self._client = None
+
         try:
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
