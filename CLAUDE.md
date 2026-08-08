@@ -103,6 +103,17 @@ log_deinit();
 
 Add `.c` files to `user/` and list them in `CMakeLists.txt` under `add_executable()`. For additional libraries, place `.so`/`.a` files in `part/` and add `-l<name>` via `target_link_libraries()` in CMakeLists.txt.
 
+## App Layer Convention
+
+`user/` 是应用层（组装根 + 业务封装），遵循以下约定：
+
+- **每个业务功能一个 `app_<feature>.c/.h`**，如 `app_sensor.c`、`app_led.c`。`.h` 只暴露不透明类型（`app_<feature>_t`）和函数声明
+- **`main.c` 只是组装根**：只做 create → register → run（+atexit 清理），不写业务逻辑、不定义业务线程
+- **业务线程/采集循环进 app 文件内部**（static），通过 `app_<feature>_start/stop` 暴露生命周期
+- **命令 handler（`cmd_handler_*`）放在 `user/` 对应 app 文件**，通过 `app_cmd_register` 注入 cmd dispatcher；cmd 模块本身不含任何业务 handler
+- **Demo 一律独立可执行文件**（如 `vision_demo.c`），不塞进 `project_app`
+- **新文件必须手动注册**：`user/` 下的 `.c` 加入顶层 `CMakeLists.txt` 的 `add_executable(project_app ...)`
+
 ## 日志规范
 
 所有 `LOG_DEBUG/INFO/WARN/ERROR` 消息**必须使用英文**，禁止中文。日志可能被远程采集、监控系统解析，中文在嵌入式环境容易乱码。
@@ -116,9 +127,13 @@ LOG_INFO("I2C 总线初始化成功");           // ❌
 
 ## Coding Convention
 
-所有函数使用中文注释，遵循统一格式：
+所有函数使用中文注释。**注释写在实现文件（`.c`/`.cpp`）中，不写在头文件**，方便阅读源码。
 
 ```c
+// ✅ .h 中：只声明，不加注释
+hw_err_t some_function(int param1, void* param2);
+
+// ✅ .c 中：完整注释
 /**
  * 简短描述函数的功能（做什么，一句话）
  *
@@ -127,11 +142,14 @@ LOG_INFO("I2C 总线初始化成功");           // ❌
  * @return        返回值含义（NULL表示什么？错误码含义？）
  * @note          特殊注意事项、副作用、线程安全性等（可选）
  */
-hw_err_t some_function(int param1, void* param2);
+hw_err_t some_function(int param1, void* param2)
+{
+    /* ... */
+}
 ```
 
 要点：
-- 每个 `.h` 中的公开函数必须有完整注释
-- `.c` 中的内部函数至少写一行 `/* 内部：xxx */`
+- 每个 `.c`/`.cpp` 中的公开函数必须有 `/** */` 完整注释
+- 内部函数（static/未在头文件声明）至少写一行 `/* 内部：xxx */`
 - 参数和返回值必须说清楚，不能用含糊描述
 - `@note` 用于标注线程安全、可重入、副作用等关键信息
