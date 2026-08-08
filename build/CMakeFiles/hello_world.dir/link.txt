@@ -1,1 +1,0 @@
-aarch64-none-linux-gnu-gcc CMakeFiles/hello_world.dir/user/main.c.o -o hello_world   -L/home/chenchizhao/project/part 

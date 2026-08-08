@@ -57,10 +57,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/chenchizhao/project
+CMAKE_SOURCE_DIR = /home/chenchizhao/base_project
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/chenchizhao/project/build
+CMAKE_BINARY_DIR = /home/chenchizhao/base_project/build
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -132,9 +132,9 @@ install/strip/fast: preinstall/fast
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/chenchizhao/project/build/CMakeFiles /home/chenchizhao/project/build//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/chenchizhao/base_project/build/CMakeFiles /home/chenchizhao/base_project/build//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/chenchizhao/project/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/chenchizhao/base_project/build/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -162,24 +162,233 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named hello_world
+# Target rules for targets named project_app
 
 # Build rule for target.
-hello_world: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 hello_world
-.PHONY : hello_world
+project_app: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 project_app
+.PHONY : project_app
 
 # fast build rule for target.
-hello_world/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/hello_world.dir/build.make CMakeFiles/hello_world.dir/build
-.PHONY : hello_world/fast
+project_app/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/build
+.PHONY : project_app/fast
+
+#=============================================================================
+# Target rules for targets named hw
+
+# Build rule for target.
+hw: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 hw
+.PHONY : hw
+
+# fast build rule for target.
+hw/fast:
+	$(MAKE) $(MAKESILENT) -f hw/CMakeFiles/hw.dir/build.make hw/CMakeFiles/hw.dir/build
+.PHONY : hw/fast
+
+#=============================================================================
+# Target rules for targets named log
+
+# Build rule for target.
+log: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 log
+.PHONY : log
+
+# fast build rule for target.
+log/fast:
+	$(MAKE) $(MAKESILENT) -f modules/log/CMakeFiles/log.dir/build.make modules/log/CMakeFiles/log.dir/build
+.PHONY : log/fast
+
+#=============================================================================
+# Target rules for targets named cmd
+
+# Build rule for target.
+cmd: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 cmd
+.PHONY : cmd
+
+# fast build rule for target.
+cmd/fast:
+	$(MAKE) $(MAKESILENT) -f modules/cmd/CMakeFiles/cmd.dir/build.make modules/cmd/CMakeFiles/cmd.dir/build
+.PHONY : cmd/fast
+
+#=============================================================================
+# Target rules for targets named cmd_demo
+
+# Build rule for target.
+cmd_demo: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 cmd_demo
+.PHONY : cmd_demo
+
+# fast build rule for target.
+cmd_demo/fast:
+	$(MAKE) $(MAKESILENT) -f modules/cmd/CMakeFiles/cmd_demo.dir/build.make modules/cmd/CMakeFiles/cmd_demo.dir/build
+.PHONY : cmd_demo/fast
+
+#=============================================================================
+# Target rules for targets named vision
+
+# Build rule for target.
+vision: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 vision
+.PHONY : vision
+
+# fast build rule for target.
+vision/fast:
+	$(MAKE) $(MAKESILENT) -f modules/vision/CMakeFiles/vision.dir/build.make modules/vision/CMakeFiles/vision.dir/build
+.PHONY : vision/fast
+
+user/app_camera.o: user/app_camera.c.o
+.PHONY : user/app_camera.o
+
+# target to build an object file
+user/app_camera.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_camera.c.o
+.PHONY : user/app_camera.c.o
+
+user/app_camera.i: user/app_camera.c.i
+.PHONY : user/app_camera.i
+
+# target to preprocess a source file
+user/app_camera.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_camera.c.i
+.PHONY : user/app_camera.c.i
+
+user/app_camera.s: user/app_camera.c.s
+.PHONY : user/app_camera.s
+
+# target to generate assembly for a file
+user/app_camera.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_camera.c.s
+.PHONY : user/app_camera.c.s
+
+user/app_cmd.o: user/app_cmd.c.o
+.PHONY : user/app_cmd.o
+
+# target to build an object file
+user/app_cmd.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_cmd.c.o
+.PHONY : user/app_cmd.c.o
+
+user/app_cmd.i: user/app_cmd.c.i
+.PHONY : user/app_cmd.i
+
+# target to preprocess a source file
+user/app_cmd.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_cmd.c.i
+.PHONY : user/app_cmd.c.i
+
+user/app_cmd.s: user/app_cmd.c.s
+.PHONY : user/app_cmd.s
+
+# target to generate assembly for a file
+user/app_cmd.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_cmd.c.s
+.PHONY : user/app_cmd.c.s
+
+user/app_led.o: user/app_led.c.o
+.PHONY : user/app_led.o
+
+# target to build an object file
+user/app_led.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_led.c.o
+.PHONY : user/app_led.c.o
+
+user/app_led.i: user/app_led.c.i
+.PHONY : user/app_led.i
+
+# target to preprocess a source file
+user/app_led.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_led.c.i
+.PHONY : user/app_led.c.i
+
+user/app_led.s: user/app_led.c.s
+.PHONY : user/app_led.s
+
+# target to generate assembly for a file
+user/app_led.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_led.c.s
+.PHONY : user/app_led.c.s
+
+user/app_sensor.o: user/app_sensor.c.o
+.PHONY : user/app_sensor.o
+
+# target to build an object file
+user/app_sensor.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_sensor.c.o
+.PHONY : user/app_sensor.c.o
+
+user/app_sensor.i: user/app_sensor.c.i
+.PHONY : user/app_sensor.i
+
+# target to preprocess a source file
+user/app_sensor.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_sensor.c.i
+.PHONY : user/app_sensor.c.i
+
+user/app_sensor.s: user/app_sensor.c.s
+.PHONY : user/app_sensor.s
+
+# target to generate assembly for a file
+user/app_sensor.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_sensor.c.s
+.PHONY : user/app_sensor.c.s
+
+user/app_signal.o: user/app_signal.c.o
+.PHONY : user/app_signal.o
+
+# target to build an object file
+user/app_signal.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_signal.c.o
+.PHONY : user/app_signal.c.o
+
+user/app_signal.i: user/app_signal.c.i
+.PHONY : user/app_signal.i
+
+# target to preprocess a source file
+user/app_signal.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_signal.c.i
+.PHONY : user/app_signal.c.i
+
+user/app_signal.s: user/app_signal.c.s
+.PHONY : user/app_signal.s
+
+# target to generate assembly for a file
+user/app_signal.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_signal.c.s
+.PHONY : user/app_signal.c.s
+
+user/app_system.o: user/app_system.c.o
+.PHONY : user/app_system.o
+
+# target to build an object file
+user/app_system.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_system.c.o
+.PHONY : user/app_system.c.o
+
+user/app_system.i: user/app_system.c.i
+.PHONY : user/app_system.i
+
+# target to preprocess a source file
+user/app_system.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_system.c.i
+.PHONY : user/app_system.c.i
+
+user/app_system.s: user/app_system.c.s
+.PHONY : user/app_system.s
+
+# target to generate assembly for a file
+user/app_system.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/app_system.c.s
+.PHONY : user/app_system.c.s
 
 user/main.o: user/main.c.o
 .PHONY : user/main.o
 
 # target to build an object file
 user/main.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/hello_world.dir/build.make CMakeFiles/hello_world.dir/user/main.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/main.c.o
 .PHONY : user/main.c.o
 
 user/main.i: user/main.c.i
@@ -187,7 +396,7 @@ user/main.i: user/main.c.i
 
 # target to preprocess a source file
 user/main.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/hello_world.dir/build.make CMakeFiles/hello_world.dir/user/main.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/main.c.i
 .PHONY : user/main.c.i
 
 user/main.s: user/main.c.s
@@ -195,7 +404,7 @@ user/main.s: user/main.c.s
 
 # target to generate assembly for a file
 user/main.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/hello_world.dir/build.make CMakeFiles/hello_world.dir/user/main.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/project_app.dir/build.make CMakeFiles/project_app.dir/user/main.c.s
 .PHONY : user/main.c.s
 
 # Help Target
@@ -210,7 +419,30 @@ help:
 	@echo "... install/strip"
 	@echo "... list_install_components"
 	@echo "... rebuild_cache"
-	@echo "... hello_world"
+	@echo "... cmd"
+	@echo "... cmd_demo"
+	@echo "... hw"
+	@echo "... log"
+	@echo "... project_app"
+	@echo "... vision"
+	@echo "... user/app_camera.o"
+	@echo "... user/app_camera.i"
+	@echo "... user/app_camera.s"
+	@echo "... user/app_cmd.o"
+	@echo "... user/app_cmd.i"
+	@echo "... user/app_cmd.s"
+	@echo "... user/app_led.o"
+	@echo "... user/app_led.i"
+	@echo "... user/app_led.s"
+	@echo "... user/app_sensor.o"
+	@echo "... user/app_sensor.i"
+	@echo "... user/app_sensor.s"
+	@echo "... user/app_signal.o"
+	@echo "... user/app_signal.i"
+	@echo "... user/app_signal.s"
+	@echo "... user/app_system.o"
+	@echo "... user/app_system.i"
+	@echo "... user/app_system.s"
 	@echo "... user/main.o"
 	@echo "... user/main.i"
 	@echo "... user/main.s"

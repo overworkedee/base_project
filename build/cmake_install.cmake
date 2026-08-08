@@ -1,4 +1,4 @@
-# Install script for directory: /home/chenchizhao/project
+# Install script for directory: /home/chenchizhao/base_project
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -42,26 +42,40 @@ if(NOT DEFINED CMAKE_OBJDUMP)
   set(CMAKE_OBJDUMP "/usr/bin/objdump")
 endif()
 
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/chenchizhao/base_project/build/hw/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/home/chenchizhao/base_project/build/modules/cmake_install.cmake")
+endif()
+
 if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_COMPONENT)
-  if(EXISTS "$ENV{DESTDIR}/bin/hello_world" AND
-     NOT IS_SYMLINK "$ENV{DESTDIR}/bin/hello_world")
+  if(EXISTS "$ENV{DESTDIR}/bin/project_app" AND
+     NOT IS_SYMLINK "$ENV{DESTDIR}/bin/project_app")
     file(RPATH_CHECK
-         FILE "$ENV{DESTDIR}/bin/hello_world"
+         FILE "$ENV{DESTDIR}/bin/project_app"
          RPATH "")
   endif()
   list(APPEND CMAKE_ABSOLUTE_DESTINATION_FILES
-   "/bin/hello_world")
+   "/bin/project_app")
   if(CMAKE_WARN_ON_ABSOLUTE_INSTALL_DESTINATION)
     message(WARNING "ABSOLUTE path INSTALL DESTINATION : ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
   endif()
   if(CMAKE_ERROR_ON_ABSOLUTE_INSTALL_DESTINATION)
     message(FATAL_ERROR "ABSOLUTE path INSTALL DESTINATION forbidden (by caller): ${CMAKE_ABSOLUTE_DESTINATION_FILES}")
   endif()
-  file(INSTALL DESTINATION "/bin" TYPE EXECUTABLE FILES "/home/chenchizhao/project/build/hello_world")
-  if(EXISTS "$ENV{DESTDIR}/bin/hello_world" AND
-     NOT IS_SYMLINK "$ENV{DESTDIR}/bin/hello_world")
+  file(INSTALL DESTINATION "/bin" TYPE EXECUTABLE FILES "/home/chenchizhao/base_project/out/bin/project_app")
+  if(EXISTS "$ENV{DESTDIR}/bin/project_app" AND
+     NOT IS_SYMLINK "$ENV{DESTDIR}/bin/project_app")
+    file(RPATH_CHANGE
+         FILE "$ENV{DESTDIR}/bin/project_app"
+         OLD_RPATH "/home/chenchizhao/base_project/part:/home/chenchizhao/base_project/part/libs:"
+         NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
-      execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}/bin/hello_world")
+      execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}/bin/project_app")
     endif()
   endif()
 endif()
@@ -74,5 +88,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/home/chenchizhao/project/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/chenchizhao/base_project/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
