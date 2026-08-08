@@ -1,3 +1,16 @@
 build/
 .claude/
 out/
+cscope.*
+ncscope.*
+tags
+
+# Python
+__pycache__/
+*.pyc
+
+# OpenCV 交叉编译产物（第三方，不入库，由 part/build_opencv_arm64.sh 生成）
+part/libs/
+part/opencv-4.x/
+part/opencv-4.x.zip
+part/opencv-arm64/
