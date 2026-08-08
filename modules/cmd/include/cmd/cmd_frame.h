@@ -40,6 +40,7 @@ static inline uint8_t cmd_frame_sub_req(uint8_t sub) { return sub & ~CMD_SUB_RES
 #define CMD_LED     0x01  /* LED 读写控制           */
 #define CMD_SENSOR  0x02  /* 传感器读写 + 数据流订阅 */
 #define CMD_SYSTEM  0x03  /* 系统信息/日志等级       */
+#define CMD_CAMERA  0x05  /* 相机拍照/图像处理        */
 
 /* ── 子命令操作码 ───────────────────────────────────────────────────── */
 
@@ -47,6 +48,8 @@ static inline uint8_t cmd_frame_sub_req(uint8_t sub) { return sub & ~CMD_SUB_RES
 #define CMD_SUB_READ        0x02  /* 读操作         */
 #define CMD_SUB_SUBSCRIBE   0x03  /* 订阅数据流     */
 #define CMD_SUB_UNSUBSCRIBE 0x04  /* 取消订阅       */
+#define CMD_SUB_RTSP_START  0x07  /* 启动 RTSP 推流 */
+#define CMD_SUB_RTSP_STOP   0x08  /* 停止 RTSP 推流 */
 
 /* ── 数据流 ID ──────────────────────────────────────────────────────── */
 

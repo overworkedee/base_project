@@ -14,6 +14,7 @@ set(HW_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bus/bus_i2c.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dev/dev_led.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/dev/dev_sht30.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/dev/dev_camera.c
 )
 
 # Collect headers (for IDE convenience, not required for build)
@@ -25,6 +26,7 @@ set(HW_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/hw/dev/dev_template.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/hw/dev/dev_led.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/hw/dev/dev_sht30.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/hw/dev/dev_camera.h
 )
 
 # Static library

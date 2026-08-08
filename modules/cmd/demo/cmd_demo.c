@@ -10,6 +10,7 @@
 
 #define _GNU_SOURCE
 #include "cmd/cmd_protocol.h"
+#include "cmd/cmd_transport.h"
 #include "cmd/cmd_frame.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -134,6 +135,7 @@ static int send_frame(const cmd_frame_t* req)
         case CMD_LED:    cmd_name = "LED";    break;
         case CMD_SENSOR: cmd_name = "SENSOR"; break;
         case CMD_SYSTEM: cmd_name = "SYSTEM"; break;
+        case CMD_CAMERA: cmd_name = "CAMERA"; break;
         }
 
         const char* sub_type = (rsp.sub & CMD_SUB_RESPONSE_FLAG) ? "RSP" : "REQ";
@@ -176,6 +178,19 @@ static int send_frame(const cmd_frame_t* req)
                 } else if (rsp.cmd == CMD_LED && rsp.len >= 3) {
                     printf("  ── LED #%d: %s\n", rsp.payload[1],
                            rsp.payload[2] ? "ON" : "OFF");
+                } else if (rsp.cmd == CMD_CAMERA && op == CMD_SUB_WRITE && rsp.len >= 5) {
+                    /* 拍照结果: [err, count 4B BE] */
+                    uint32_t count = ((uint32_t)rsp.payload[1] << 24) |
+                                     ((uint32_t)rsp.payload[2] << 16) |
+                                     ((uint32_t)rsp.payload[3] << 8) |
+                                     rsp.payload[4];
+                    printf("  ── Snapshot OK, %u nonzero pixels\n", count);
+                } else if (rsp.cmd == CMD_CAMERA && op == CMD_SUB_READ && rsp.len >= 3) {
+                    printf("  ── Camera busy=%u, RTSP %s\n", rsp.payload[1],
+                           rsp.payload[2] ? "running" : "stopped");
+                } else if (rsp.cmd == CMD_CAMERA &&
+                           (op == CMD_SUB_RTSP_START || op == CMD_SUB_RTSP_STOP)) {
+                    printf("  ── RTSP %s\n", op == CMD_SUB_RTSP_START ? "started" : "stopped");
                 }
             }
         }
@@ -194,7 +209,8 @@ static int send_frame(const cmd_frame_t* req)
 static void cmd_connect(const char* type, const char* arg1, const char* arg2)
 {
     if (!type) {
-        printf("[CONN] usage: connect <unix|tcp> <path|host> [port]\n");
+        printf("[CONN] usage: connect unix [path]  (default: /tmp/cmd.sock)\n");
+        printf("              connect tcp [host] [port] (default: 127.0.0.1:9527)\n");
         return;
     }
 
@@ -206,10 +222,7 @@ static void cmd_connect(const char* type, const char* arg1, const char* arg2)
     }
 
     if (strcmp(type, "unix") == 0) {
-        if (!arg1) {
-            printf("[CONN] usage: connect unix <socket_path>\n");
-            return;
-        }
+        if (!arg1) arg1 = CMD_DEFAULT_UNIX_SOCK_PATH;
 
         g_fd = socket(AF_UNIX, SOCK_STREAM, 0);
         if (g_fd < 0) { printf("[ERR] socket() failed\n"); return; }
@@ -231,10 +244,7 @@ static void cmd_connect(const char* type, const char* arg1, const char* arg2)
         printf("[CONN] Connected to %s (fd=%d)\n", g_conn_target, g_fd);
 
     } else if (strcmp(type, "tcp") == 0) {
-        if (!arg1) {
-            printf("[CONN] usage: connect tcp <host> <port>\n");
-            return;
-        }
+        if (!arg1) arg1 = "127.0.0.1";
 
         uint16_t port = arg2 ? (uint16_t)atoi(arg2) : 9527;
 
@@ -407,6 +417,54 @@ static void cmd_system(const char* subcmd, const char* arg)
     }
 }
 
+/* ── Camera ──────────────────────────────────────────────────────────── */
+
+static void cmd_camera(const char* subcmd, const char* arg)
+{
+    if (!subcmd) {
+        printf("[CAMERA] usage: camera <snap|status|rtsp> [on|off]\n");
+        return;
+    }
+
+    if (strcmp(subcmd, "snap") == 0) {
+        /* 拍照（可选分辨率 WxH，默认 1280x720） */
+        uint32_t w = 1280, h = 720;
+        if (arg) {
+            char buf[32];
+            strncpy(buf, arg, sizeof(buf) - 1);
+            buf[sizeof(buf) - 1] = '\0';
+            char* x = strchr(buf, 'x');
+            if (x) {
+                *x = '\0';
+                w = (uint32_t)atoi(buf);
+                h = (uint32_t)atoi(x + 1);
+            }
+        }
+        uint8_t pld[4] = { (uint8_t)(w >> 8), (uint8_t)w,
+                           (uint8_t)(h >> 8), (uint8_t)h };
+        cmd_frame_t req = { .cmd = CMD_CAMERA, .sub = CMD_SUB_WRITE,
+                            .len = 4, .payload = pld };
+        printf("  Snap %ux%u...\n", w, h);
+        send_frame(&req);
+    } else if (strcmp(subcmd, "status") == 0) {
+        cmd_frame_t req = { .cmd = CMD_CAMERA, .sub = CMD_SUB_READ,
+                            .len = 0, .payload = NULL };
+        send_frame(&req);
+    } else if (strcmp(subcmd, "rtsp") == 0) {
+        if (!arg || (strcmp(arg, "on") != 0 && strcmp(arg, "off") != 0)) {
+            printf("[CAMERA] usage: camera rtsp <on|off>\n");
+            return;
+        }
+        cmd_frame_t req = { .cmd = CMD_CAMERA,
+                            .sub = (strcmp(arg, "on") == 0)
+                                   ? CMD_SUB_RTSP_START : CMD_SUB_RTSP_STOP,
+                            .len = 0, .payload = NULL };
+        send_frame(&req);
+    } else {
+        printf("[CAMERA] unknown: '%s'\n", subcmd);
+    }
+}
+
 /* ── Raw ─────────────────────────────────────────────────────────────── */
 
 static void cmd_raw(const char* hex_str)
@@ -448,8 +506,8 @@ static void cmd_help(void)
         "\n"
         "=== CMD Shell ===\n"
         "\n"
-        "  connect unix <path>       — Connect via Unix socket\n"
-        "  connect tcp <host> <port> — Connect via TCP (default port 9527)\n"
+        "  connect unix [path]       — Connect via Unix socket (default: /tmp/cmd.sock)\n"
+        "  connect tcp  [host] [port] — Connect via TCP (default: 127.0.0.1:9527)\n"
         "\n"
         "  led on     [id]           — Turn LED on\n"
         "  led off    [id]           — Turn LED off\n"
@@ -462,6 +520,10 @@ static void cmd_help(void)
         "\n"
         "  system info               — Get system version\n"
         "  system loglevel <0-3>     — Set log level\n"
+        "\n"
+        "  camera snap [WxH]         — Take photo (default 1280x720)\n"
+        "  camera status             — Query camera/RTSP status\n"
+        "  camera rtsp <on|off>      — Start/stop RTSP stream\n"
         "\n"
         "  raw <hex bytes>           — Send raw hex bytes\n"
         "  help                      — Show this help\n"
@@ -477,7 +539,7 @@ int main(void)
     char input[MAX_INPUT];
 
     printf("=== CMD Shell Demo ===\n");
-    printf("Type 'help' for commands. Connect first, then send commands.\n\n");
+    printf("Type 'connect unix' to use default socket, or 'help' for commands.\n\n");
 
     while (1) {
         /* 显示连接状态 */
@@ -515,6 +577,8 @@ int main(void)
             cmd_sensor(arg1, arg2);
         } else if (strcmp(cmd, "system") == 0) {
             cmd_system(arg1, arg2);
+        } else if (strcmp(cmd, "camera") == 0) {
+            cmd_camera(arg1, arg2);
         } else if (strcmp(cmd, "raw") == 0) {
             /* raw 命令需要整行十六进制字符串 */
             char* rest = input + strlen(cmd) + 1;
