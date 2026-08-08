@@ -9,6 +9,8 @@ cmd 是 project_app 的**远程控制与监控通道**，允许 PC/网页通过 
 ```
 ┌─────────────────────────────────────────┐
 │  Handlers (cmd_handler_*)               │  ← 业务逻辑：LED / 传感器 / 系统
+│     由 app 层提供（user/app_*.c），     │     cmd 模块本身不包含任何业务 handler
+│     通过 app_cmd_register 注入 dispatcher│
 ├─────────────────────────────────────────┤
 │  Dispatcher (cmd_dispatcher)            │  ← 路由表：CMD → handler 映射
 ├─────────────────────────────────────────┤
@@ -41,8 +43,10 @@ main()
   │     └── cmd_dispatcher_register(CMD_LED, handler, ctx)
   │           └── entries[0x01] = {handler, ctx}
   │
-  ├── app_cmd_register(g_cmd, CMD_SENSOR, cmd_handler_sensor, &sctx)
+  ├── app_cmd_register(g_cmd, CMD_SENSOR, cmd_handler_sensor, g_sensor)
   ├── app_cmd_register(g_cmd, CMD_SYSTEM, cmd_handler_system, sub_mgr)
+  │
+  │  （handler 定义在 user/app_led.c / app_sensor.c / app_system.c）
   │
   ├── app_cmd_add_listener_unix(g_cmd, "/tmp/cmd.sock")
   │     ├── cmd_transport_listen_unix(path)
@@ -113,15 +117,15 @@ cmd_server_run()                                [主线程]
         │                   │     │     └── cmd_conn_send(conn, &err_rsp)
         │                   │     └── entry->handler(req, conn, entry->ctx)
         │                   │           │
-        │                   │           ├─ cmd_handler_led()     cmd_handler_led.c
+        │                   │           ├─ cmd_handler_led()     user/app_led.c
         │                   │           │    led_on(led) / led_off(led)
         │                   │           │    cmd_conn_send(conn, &rsp)
         │                   │           │
-        │                   │           ├─ cmd_handler_sensor()  cmd_handler_sensor.c
+        │                   │           ├─ cmd_handler_sensor()  user/app_sensor.c
         │                   │           │    sht30_read_temperature() / sht30_read_humidity()
         │                   │           │    cmd_conn_send()  或  cmd_subscription_add/remove()
         │                   │           │
-        │                   │           └─ cmd_handler_system()  cmd_handler_system.c
+        │                   │           └─ cmd_handler_system()  user/app_system.c
         │                   │                log_set_level()   或  cmd_subscription_add/remove()
         │                   │                log_ring_get_all() 或  cmd_conn_send()
         │                   │
@@ -487,7 +491,7 @@ cmd_conn_send(conn, frame)
 // 1. cmd_frame.h 加宏
 #define CMD_MOTOR  0x04
 
-// 2. 写 handler（新文件 cmd_handler_motor.c）
+// 2. 写 handler（新文件 user/app_motor.c，注册进顶层 CMakeLists）
 void cmd_handler_motor(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx) {
     uint8_t op = cmd_frame_sub_req(req->sub);
     if (op == CMD_SUB_WRITE) { /* ... */ }

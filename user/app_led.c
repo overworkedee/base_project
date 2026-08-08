@@ -1,16 +1,15 @@
 /**
- * cmd_handler_led.c -- LED 命令处理器
+ * app_led.c — LED 命令处理器
  *
  * 处理 CMD=0x01:
  *   SUB=0x01 写: PAYLOAD=[led_id 1B, state 1B]  → 调用 led_on/led_off
  *   SUB=0x02 读: PAYLOAD=[led_id 1B]            → 读取 brightness，返回 [led_id, state]
  *
- * 每个处理器通过 void* ctx 获取硬件句柄。
- * ctx 指向 cmd_handler_ctx_t 结构（定义在 cmd_handler_ctx.h）。
+ * 通过 void* ctx 获取 led_t* 硬件句柄（由 main.c 注册时注入）。
  */
 
 #define _GNU_SOURCE
-#include "cmd/cmd_dispatcher.h"
+#include "app_led.h"
 #include "cmd/cmd_server.h"
 #include "cmd/cmd_protocol.h"
 #include "hw/dev/dev_led.h"

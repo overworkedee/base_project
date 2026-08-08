@@ -6,9 +6,6 @@ set(CMD_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/cmd_server.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/cmd_dispatcher.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/cmd_subscription.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/cmd_handler_led.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/cmd_handler_sensor.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/cmd_handler_system.c
 )
 
 set(CMD_HEADERS

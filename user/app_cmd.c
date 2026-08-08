@@ -39,6 +39,13 @@ static void on_request(const cmd_frame_t* req, cmd_conn_t* conn,
 
 /* ── 公开 API ───────────────────────────────────────────────────────── */
 
+/**
+ * 创建命令模块实例。
+ *
+ * 内部依次创建订阅管理器、调度器、命令服务器，并桥接回调。
+ *
+ * @return 成功返回实例指针，失败返回 NULL
+ */
 app_cmd_t* app_cmd_create(void)
 {
     app_cmd_t* cmd = (app_cmd_t*)calloc(1, sizeof(app_cmd_t));
@@ -70,6 +77,11 @@ app_cmd_t* app_cmd_create(void)
     return cmd;
 }
 
+/**
+ * 销毁命令模块并释放所有资源。
+ *
+ * @param cmd  命令模块实例（可为 NULL，此时无操作）
+ */
 void app_cmd_destroy(app_cmd_t* cmd)
 {
     if (!cmd) return;
@@ -91,6 +103,17 @@ void app_cmd_destroy(app_cmd_t* cmd)
     LOG_INFO("Command module destroyed");
 }
 
+/**
+ * 注册命令处理器。
+ *
+ * 每个 CMD 大类可注册一个 handler 和独立 ctx，重复注册返回 -1。
+ *
+ * @param cmd      命令模块实例
+ * @param cmd_cls  命令大类（CMD_LED / CMD_SENSOR / CMD_SYSTEM / ...）
+ * @param handler  处理函数
+ * @param ctx      传递给 handler 的用户上下文（可为 NULL）
+ * @return         0 成功，-1 已注册或参数错误
+ */
 int app_cmd_register(app_cmd_t* cmd, uint8_t cmd_cls,
                      cmd_handler_fn handler, void* ctx)
 {
@@ -98,6 +121,13 @@ int app_cmd_register(app_cmd_t* cmd, uint8_t cmd_cls,
     return cmd_dispatcher_register(cmd->dispatcher, cmd_cls, handler, ctx);
 }
 
+/**
+ * 添加 Unix Domain Socket 监听。
+ *
+ * @param cmd   命令模块实例
+ * @param path  socket 路径（如 CMD_DEFAULT_UNIX_SOCK_PATH）
+ * @return      0 成功，-1 失败（路径不可用或已存在）
+ */
 int app_cmd_add_listener_unix(app_cmd_t* cmd, const char* path)
 {
     if (!cmd || !path) return -1;
@@ -114,6 +144,13 @@ int app_cmd_add_listener_unix(app_cmd_t* cmd, const char* path)
     return 0;
 }
 
+/**
+ * 添加 TCP 监听。
+ *
+ * @param cmd   命令模块实例
+ * @param port  监听端口（如 9527）
+ * @return      0 成功，-1 失败（端口被占用等）
+ */
 int app_cmd_add_listener_tcp(app_cmd_t* cmd, uint16_t port)
 {
     if (!cmd) return -1;
@@ -130,6 +167,12 @@ int app_cmd_add_listener_tcp(app_cmd_t* cmd, uint16_t port)
     return 0;
 }
 
+/**
+ * 启动命令服务器事件循环（阻塞当前线程）。
+ *
+ * @param cmd  命令模块实例
+ * @return     0 正常退出，-1 失败（无监听器）
+ */
 int app_cmd_run(app_cmd_t* cmd)
 {
     if (!cmd || !cmd->server || cmd->listener_count == 0) {
@@ -141,6 +184,11 @@ int app_cmd_run(app_cmd_t* cmd)
     return cmd_server_run(cmd->server);
 }
 
+/**
+ * 请求命令服务器退出（非阻塞）。
+ *
+ * @param cmd  命令模块实例（可为 NULL）
+ */
 void app_cmd_stop(app_cmd_t* cmd)
 {
     if (cmd && cmd->server) {
@@ -148,6 +196,12 @@ void app_cmd_stop(app_cmd_t* cmd)
     }
 }
 
+/**
+ * 获取订阅管理器指针（供传感器线程等推送数据）。
+ *
+ * @param cmd  命令模块实例
+ * @return     订阅管理器指针，cmd 为 NULL 时返回 NULL
+ */
 cmd_subscription_mgr_t* app_cmd_get_sub_mgr(app_cmd_t* cmd)
 {
     return cmd ? cmd->sub_mgr : NULL;

@@ -1,17 +1,32 @@
+/**
+ * main.c — 应用组装根（composition root）
+ *
+ * 只负责三件事：
+ *   1. 初始化各模块（log / hw / cmd / app_sensor）
+ *   2. 注册命令处理器与监听
+ *   3. 进入命令服务器事件循环
+ *
+ * 业务逻辑（采集线程、命令处理）均在各 app_*.c 中，
+ * 扩展新功能无需修改本文件，只需：
+ *   - 新增 app_<feature>.c/.h
+ *   - 在 main 中 create/register（各一行）
+ */
+
 #include "log/log.h"
 #include "app_signal.h"
 #include "app_cmd.h"
+#include "app_led.h"
+#include "app_sensor.h"
+#include "app_system.h"
+#include "app_camera.h"
 #include "hw/dev/dev_sht30.h"
 #include "hw/dev/dev_led.h"
 #include "cmd/cmd_transport.h"
 #include "cmd/cmd_subscription.h"
-#include "cmd/cmd_frame.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <time.h>
-#include <arpa/inet.h>  /* htonl */
 
 /* ── 硬件路径 ───────────────────────────────────────────────────────── */
 
@@ -20,73 +35,11 @@
 
 /* ── 全局资源句柄 ───────────────────────────────────────────────────── */
 
-/**
- * 传感器 handler 上下文。
- */
-typedef struct {
-    sht30_t*                  sht30;
-    cmd_subscription_mgr_t*   sub_mgr;
-} sensor_ctx_t;
-
-static sht30_t*               g_sht30 = NULL;
-static led_t*                 g_led   = NULL;
-static app_cmd_t*             g_cmd   = NULL;
-static sensor_ctx_t           g_sensor_ctx;  /* sensor handler 上下文（全局生命周期） */
-static volatile int           g_running = 1;
-
-/* ── handler 前向声明 ───────────────────────────────────────────────── */
-
-extern void cmd_handler_led(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx);
-extern void cmd_handler_sensor(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx);
-extern void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx);
-
-/* ── 传感器采集线程 ─────────────────────────────────────────────────── */
-
-static void* sensor_thread(void* arg)
-{
-    (void)arg;
-
-    LOG_INFO("Sensor thread started");
-
-    cmd_subscription_mgr_t* sub_mgr = app_cmd_get_sub_mgr(g_cmd);
-
-    while (g_running) {
-        if (!g_sht30 || !sub_mgr) {
-            sleep(1);
-            continue;
-        }
-
-        float temp_c = 0.0f, humidity = 0.0f;
-
-        if (sht30_read_temperature(g_sht30, &temp_c) == HW_OK) {
-            uint32_t tmp;
-            memcpy(&tmp, &temp_c, 4);
-            tmp = htonl(tmp);
-            uint8_t val[4];
-            memcpy(val, &tmp, 4);
-
-            int n = cmd_subscription_push(sub_mgr, CMD_SENSOR, CMD_DATA_TEMPERATURE, val, 4);
-            if (n > 0) {
-                LOG_DEBUG("Pushed temperature %.1f°C to %d subscriber(s)", temp_c, n);
-            }
-        }
-
-        if (sht30_read_humidity(g_sht30, &humidity) == HW_OK) {
-            uint32_t tmp;
-            memcpy(&tmp, &humidity, 4);
-            tmp = htonl(tmp);
-            uint8_t val[4];
-            memcpy(val, &tmp, 4);
-
-            cmd_subscription_push(sub_mgr, CMD_SENSOR, CMD_DATA_HUMIDITY, val, 4);
-        }
-
-        sleep(1);
-    }
-
-    LOG_INFO("Sensor thread stopped");
-    return NULL;
-}
+static sht30_t*        g_sht30  = NULL;
+static led_t*          g_led    = NULL;
+static app_cmd_t*      g_cmd    = NULL;
+static app_sensor_t*   g_sensor = NULL;
+static app_camera_t*   g_camera = NULL;
 
 /* ── 日志推送回调 ─────────────────────────────────────────────────── */
 
@@ -131,21 +84,32 @@ static void on_log_push(uint8_t level, const char* msg, void* ctx)
 
 /* ── 清理回调 ───────────────────────────────────────────────────────── */
 
+/**
+ * 进程退出时的统一清理（atexit 触发）。
+ *
+ * 关键顺序：
+ *   1. 停止并销毁传感器模块 ← 其采集线程持有 sub_mgr，必须先退出
+ *   2. 注销日志回调         ← 阻止 on_log_push 访问已释放的 sub_mgr
+ *   3. 销毁 cmd 模块        ← 释放 sub_mgr/server/dispatcher
+ *   4. 关闭硬件             ← led_close/sht30_close 可能调用 LOG_*
+ *   5. 关闭日志模块         ← log_deinit 内部调用 LOG_INFO
+ */
 static void cleanup(void)
 {
     LOG_INFO("Shutting down...");
 
-    g_running = 0;
+    if (g_sensor) {
+        app_sensor_stop(g_sensor);
+        app_sensor_destroy(g_sensor);
+        g_sensor = NULL;
+    }
 
-    /**
-     * 关键顺序：必须先注销日志回调，否则后续 LOG_* 会触发 on_log_push 访问
-     * 已释放的 sub_mgr，造成 use-after-free segfault。
-     *
-     *   1. 注销 log callback  ← 阻止 on_log_push 访问 sub_mgr
-     *   2. 销毁 cmd 模块      ← 释放 sub_mgr/server/dispatcher
-     *   3. 关闭硬件           ← led_close/sht30_close 可能调用 LOG_*
-     *   4. 关闭日志模块       ← log_deinit 内部调用 LOG_INFO
-     */
+    if (g_camera) {
+        app_camera_stop(g_camera);
+        app_camera_destroy(g_camera);
+        g_camera = NULL;
+    }
+
     log_set_subscribe_callback(NULL, NULL);
 
     if (g_cmd) {
@@ -177,8 +141,7 @@ int main(int argc, char *argv[])
     app_signal_init();
 
     /* 初始化日志 */
-    hw_err_t ret = log_init("/tmp/project.log", LOG_DEBUG);
-    if (ret != HW_OK) return 1;
+    if (log_init("/tmp/project.log", LOG_DEBUG) != HW_OK) return 1;
 
     LOG_INFO("Application started");
     LOG_INFO("Platform: RK3588 Orange Pi 5 Plus");
@@ -207,10 +170,19 @@ int main(int argc, char *argv[])
 
     /* 注册命令处理器（扩展新功能只需增加一行） */
     app_cmd_register(g_cmd, CMD_LED,    cmd_handler_led,    g_led);
-    g_sensor_ctx.sht30   = g_sht30;
-    g_sensor_ctx.sub_mgr = app_cmd_get_sub_mgr(g_cmd);
-    app_cmd_register(g_cmd, CMD_SENSOR, cmd_handler_sensor, &g_sensor_ctx);
+    g_sensor = app_sensor_create(g_sht30, app_cmd_get_sub_mgr(g_cmd));
+    if (!g_sensor) {
+        LOG_ERROR("Failed to create sensor module");
+        return 1;
+    }
+    app_cmd_register(g_cmd, CMD_SENSOR, cmd_handler_sensor, g_sensor);
     app_cmd_register(g_cmd, CMD_SYSTEM, cmd_handler_system, app_cmd_get_sub_mgr(g_cmd));
+    g_camera = app_camera_create();
+    if (!g_camera) {
+        LOG_ERROR("Failed to create camera module");
+        return 1;
+    }
+    app_cmd_register(g_cmd, CMD_CAMERA, cmd_handler_camera, g_camera);
 
     /* 注册日志推送回调（必须在 app_cmd_create 之后，需要 sub_mgr） */
     log_set_subscribe_callback(on_log_push, app_cmd_get_sub_mgr(g_cmd));
@@ -220,15 +192,19 @@ int main(int argc, char *argv[])
     app_cmd_add_listener_tcp(g_cmd, 9527);
 
     /* 启动传感器采集线程 */
-    pthread_t sensor_tid;
-    pthread_create(&sensor_tid, NULL, sensor_thread, NULL);
+    if (app_sensor_start(g_sensor) != 0) {
+        LOG_ERROR("Failed to start sensor thread");
+        return 1;
+    }
 
-    /* 进入命令服务器事件循环（阻塞） */
+    /* 启动相机采集线程 */
+    if (app_camera_start(g_camera) != 0) {
+        LOG_ERROR("Failed to start camera thread");
+        return 1;
+    }
+
+    /* 进入命令服务器事件循环（阻塞，退出后由 atexit cleanup 收尾） */
     app_cmd_run(g_cmd);
-
-    /* 等待传感器线程退出 */
-    g_running = 0;
-    pthread_join(sensor_tid, NULL);
 
     LOG_INFO("Application exited normally");
     return 0;

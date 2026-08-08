@@ -23,6 +23,10 @@ done
 mkdir -p $BUILD_DIR
 cd $BUILD_DIR
 
+# 清空输出目录，确保 out/bin 只包含本次构建的产物（避免旧 demo 被误部署）
+rm -rf $PROJECT_DIR/out/bin
+mkdir -p $PROJECT_DIR/out/bin
+
 # 4. Clear stale cache (ensure cross compiler is re-detected)
 echo "==> Clearing cache..."
 rm -rf CMakeCache.txt CMakeFiles/
@@ -54,11 +58,17 @@ done
 echo ""
 echo "==> Deploying to Orange Pi..."
 
-for f in $PROJECT_DIR/out/bin/*; do
-    if [ -f "$f" ] && [ -x "$f" ]; then
-        echo "  scp $f ..."
-        scp "$f" orangepi@192.168.3.171:~
-    fi
-done
+    for f in $PROJECT_DIR/out/bin/*; do
+        if [ -f "$f" ] && [ -x "$f" ]; then
+            echo "  scp $f ..."
+            scp "$f" orangepi@192.168.3.171:/home/orangepi/Templates
+        fi
+    done
 
 echo "==> Deploy complete."
+
+# 9. Clean up intermediate build files
+echo ""
+echo "==> Cleaning build/..."
+rm -rf $BUILD_DIR
+echo "==> Cleanup done."

@@ -40,7 +40,11 @@ static void app_signal_handler(int sig)
 /**
  * 初始化信号处理模块。
  *
- * 注册 SIGINT 和 SIGTERM 处理器，重复调用安全。
+ * 注册 SIGINT 和 SIGTERM 处理器，收到信号后调用 exit(0)，
+ * 自动触发 atexit 回调链完成资源清理。重复调用安全。
+ *
+ * @note 信号处理器中只调 exit()，不直接做清理，
+ *       避免异步信号安全问题（清理逻辑都在 atexit 回调中执行）
  */
 void app_signal_init(void)
 {

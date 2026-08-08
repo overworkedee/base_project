@@ -1,5 +1,5 @@
 /**
- * cmd_handler_system.c -- 系统命令处理器
+ * app_system.c — 系统命令处理器
  *
  * 处理 CMD=0x03:
  *   SUB=0x02 (READ)              查询系统信息 → 返回版本字符串
@@ -7,11 +7,11 @@
  *   SUB=0x05 (LOG_SUBSCRIBE)     订阅日志推送 → 先回放缓冲区(≤500条)再注册实时推送
  *   SUB=0x06 (LOG_UNSUBSCRIBE)   取消日志订阅
  *
- * ctx 应为 cmd_subscription_mgr_t*（日志订阅需要）
+ * ctx 应为 cmd_subscription_mgr_t*（日志订阅需要）。
  */
 
 #define _GNU_SOURCE
-#include "cmd/cmd_dispatcher.h"
+#include "app_system.h"
 #include "cmd/cmd_server.h"
 #include "cmd/cmd_protocol.h"
 #include "cmd/cmd_subscription.h"

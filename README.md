@@ -31,7 +31,8 @@ export TOOLCHAIN_PATH=/path/to/other/toolchain
 |------|------|------|
 | `HW_BUILD_DEMO` | `0` | 1=编译硬测 CLI demo（`hw_demo`） |
 | `LOG_BUILD_DEMO` | `0` | 1=编译日志 demo（`log_demo`） |
-| `CMD_BUILD_DEMO` | `0` | 1=编译命令模块客户端 demo（`cmd_demo`） |
+| `CMD_BUILD_DEMO` | `1` | 1=编译命令模块客户端 demo（`cmd_demo`） |
+| `VISION_BUILD_DEMO` | `0` | 1=编译视觉 demo（`vision_demo`，体积大 ~11MB） |
 | `LOG_ENABLE_DEBUG` | `1` | 1=编译时保留 `LOG_DEBUG`，0=裁剪 |
 | `BUILD_TESTS` | `0` | 1=编译单元测试（test_*），0=不编译 |
 | `TOOLCHAIN_PATH` | `$HOME/orangepi-build/toolchains/gcc-arm-11.2-2022.02-x86_64-aarch64-none-linux-gnu` | 交叉编译工具链路径 |
@@ -138,6 +139,32 @@ target_link_libraries(your_app hw log)
 
 日志等级：`DEBUG(0)` < `INFO(1)` < `WARN(2)` < `ERROR(3)`，越小越详细。
 
+### 相机拍照与 RTSP 视频流
+
+详情见 [docs/camera.md](docs/camera.md)。
+
+**板上依赖**（一次性的 apt 安装）：
+
+```bash
+sudo apt install gstreamer1.0-rtsp
+```
+
+**cmd_demo 操作**（摄像头为 OV13855，经 rkisp 管道）：
+
+```
+cmd> camera snap            # 拍照 → /tmp/camera_<ts>.jpg
+cmd> camera snap 1920x1080  # 指定分辨率
+cmd> camera status          # 查询 busy/RTSP 状态
+cmd> camera rtsp on         # 启动 RTSP 推流（应用启动时默认自动启动）
+cmd> camera rtsp off        # 停止推流
+```
+
+**上位机拉流**：`ffplay rtsp://<板子IP>:8554/`
+
+**注意事项**：project_app 启动时会自动拉起 RTSP 推流（`gst-rtsp-launch` 进程），
+若板上未安装 `gstreamer1.0-rtsp`，RTSP 不可用但拍照等功能不受影响
+（日志会提示，可用 `camera rtsp on` 重试）。
+
 ### 硬测 Demo
 
 在开发板上交互式测试硬件：
@@ -179,8 +206,8 @@ hw_err_t some_function(int param1, void* param2);
 在开发板上交互式测试命令协议：
 
 ```bash
-# 编译（开启 cmd demo）
-CMD_BUILD_DEMO=1 ./build.sh
+# 编译（cmd demo 默认开启；如需强制开启可显式指定）
+./build.sh
 
 # 上传并运行主程序
 scp out/bin/project_app root@<IP>:~/
