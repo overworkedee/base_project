@@ -10,7 +10,7 @@ cmd 是 project_app 的**远程控制与监控通道**，允许 PC/网页通过 
 ┌─────────────────────────────────────────┐
 │  Handlers (cmd_handler_*)               │  ← 业务逻辑：LED / 传感器 / 系统
 │     由 app 层提供（user/app_*.c），     │     cmd 模块本身不包含任何业务 handler
-│     通过 app_cmd_register 注入 dispatcher│
+│     通过 app_cmd_svc_t 能力表自注册     │
 ├─────────────────────────────────────────┤
 │  Dispatcher (cmd_dispatcher)            │  ← 路由表：CMD → handler 映射
 ├─────────────────────────────────────────┤
@@ -39,14 +39,22 @@ main()
   │     └── cmd_server_create()                → server
   │           └── epoll_create1(EPOLL_CLOEXEC)
   │
-  ├── app_cmd_register(g_cmd, CMD_LED,    cmd_handler_led,    g_led)
-  │     └── cmd_dispatcher_register(CMD_LED, handler, ctx)
-  │           └── entries[0x01] = {handler, ctx}
+  ├── svc = app_cmd_get_svc(g_cmd)             ← 获取能力表（函数指针集合）
+  │     └── app_cmd_svc_t { register_cmd, publish_data, subscribe_data, ... }
   │
-  ├── app_cmd_register(g_cmd, CMD_SENSOR, cmd_handler_sensor, g_sensor)
-  ├── app_cmd_register(g_cmd, CMD_SYSTEM, cmd_handler_system, sub_mgr)
+  ├── app_led_create(g_led, svc)
+  │     └── svc->register_cmd(CMD_LED, cmd_handler_led, app)
+  │           └── cmd_dispatcher_register(CMD_LED, handler, ctx)
+  │                 └── entries[0x01] = {handler, ctx}
   │
-  │  （handler 定义在 user/app_led.c / app_sensor.c / app_system.c）
+  ├── app_sensor_create(g_sht30, svc)
+  │     └── svc->register_cmd(CMD_SENSOR, ...)
+  ├── app_system_create(svc)
+  │     └── svc->register_cmd(CMD_SYSTEM, ...)
+  ├── app_camera_create(svc)
+  │     └── svc->register_cmd(CMD_CAMERA, ...)
+  │
+  │  （各 app 模块通过能力表自行注册 handler，main 不感知 handler 细节）
   │
   ├── app_cmd_add_listener_unix(g_cmd, "/tmp/cmd.sock")
   │     ├── cmd_transport_listen_unix(path)
@@ -64,8 +72,9 @@ main()
   │     │     └── listen(fd, 32)
   │     └── cmd_server_add_listener(server, fd)
   │
-  ├── log_set_subscribe_callback(on_log_push, sub_mgr)
-  │     └── g_log_sub_cb = on_log_push  (之后每条 LOG_* 都会触发)
+  ├── log_set_subscribe_callback(on_log_push, (void*)svc)
+  │     └── g_log_sub_cb = on_log_push  (之后每条 LOG_* 都会触发，
+  │         通过 svc->publish_data 推送，不直接依赖 sub_mgr)
   │
   └── app_cmd_run(g_cmd)
         └── cmd_server_run(server)            ← 进入 epoll 事件循环（阻塞）
@@ -491,16 +500,17 @@ cmd_conn_send(conn, frame)
 // 1. cmd_frame.h 加宏
 #define CMD_MOTOR  0x04
 
-// 2. 写 handler（新文件 user/app_motor.c，注册进顶层 CMakeLists）
-void cmd_handler_motor(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx) {
-    uint8_t op = cmd_frame_sub_req(req->sub);
-    if (op == CMD_SUB_WRITE) { /* ... */ }
-    else if (op == CMD_SUB_READ) { /* ... */ }
-    else { /* 回复 CMD_ERR_UNKNOWN_SUB */ }
+// 2. 写 app 模块（新文件 user/app_motor.c/.h，注册进顶层 CMakeLists）
+//    app_motor_create 内部通过能力表自注册 handler：
+app_motor_t* app_motor_create(motor_t* motor, const app_cmd_svc_t* svc) {
+    app_motor_t* app = calloc(1, sizeof(*app));
+    app->motor = motor;
+    svc->register_cmd(svc->owner, CMD_MOTOR, cmd_handler_motor, app);  // 自注册
+    return app;
 }
 
-// 3. main.c 注册
-app_cmd_register(g_cmd, CMD_MOTOR, cmd_handler_motor, motor_ctx);
+// 3. main.c 组装（一行）
+g_motor = app_motor_create(g_motor_hw, app_cmd_get_svc(g_cmd));
 ```
 
 ## 8. 关键设计决策
@@ -512,4 +522,5 @@ app_cmd_register(g_cmd, CMD_MOTOR, cmd_handler_motor, motor_ctx);
 | epoll level-triggered | 避免 ET 模式下的 starvation 和复杂缓冲 |
 | 订阅走链表而非哈希表 | 订阅者数量少（<100），链表足够且无哈希冲突 |
 | handler ctx 用 void* | 每个 CMD 大类自由定义上下文类型，最大灵活 |
-| app_cmd_register 逐条注册 | vs 一次传所有指针：新增命令只需加一行，不用改函数签名 |
+| 能力表回调注入（app_cmd_svc_t）| 各 app 模块只依赖函数指针表，不感知 cmd 内部类型（server/dispatcher/sub_mgr），解耦注册与推送 |
+| 各 app 模块自注册 handler | main 只负责 create，不逐个 app_cmd_register，新增命令不改 main |

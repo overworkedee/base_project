@@ -1,15 +1,18 @@
 #ifndef APP_SYSTEM_H
 #define APP_SYSTEM_H
 
-#include "cmd/cmd_dispatcher.h"
+#include "app_registry.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* ── 命令处理器（供 app_cmd_register 注册） ──────────────────────── */
+/* ── 生命周期 ─────────────────────────────────────────────────────── */
 
-void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx);
+typedef struct app_system app_system_t;
+
+app_system_t* app_system_create(const app_cmd_svc_t* svc);
+void app_system_destroy(app_system_t* system);
 
 #ifdef __cplusplus
 }

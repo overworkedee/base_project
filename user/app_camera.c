@@ -60,7 +60,12 @@ struct app_camera {
     pid_t        rtsp_pid;    /* RTSP 子进程 PID（-1=未运行） */
     char         main_path[64];  /* mainpath 节点路径 */
     char         self_path[64];  /* selfpath 节点路径 */
+    const app_cmd_svc_t* svc;    /* 命令服务能力表（回调注入） */
 };
+
+/* 前向声明（app_camera_create 通过能力表注册它） */
+static void cmd_handler_camera(const cmd_frame_t* req, cmd_conn_t* conn,
+                               void* ctx);
 
 /* ── 内部辅助函数 ───────────────────────────────────────────────────── */
 
@@ -231,18 +236,25 @@ static void* camera_thread(void* arg)
 /* ── 生命周期 ───────────────────────────────────────────────────────── */
 
 /**
- * 创建相机应用模块。
+ * 创建相机应用模块并注册 CMD_CAMERA 处理器。
  *
- * 动态解析 rkisp mainpath/selfpath 节点路径。
+ * 动态解析 rkisp mainpath/selfpath 节点路径；
+ * 通过 svc->register_cmd 将 cmd_handler_camera 注入调度器。
  *
- * @return  成功返回实例指针，失败返回 NULL
+ * @param svc  命令服务能力表（来自 app_cmd_get_svc），可为 NULL
+ * @return     成功返回实例指针，失败返回 NULL
  */
-app_camera_t* app_camera_create(void)
+app_camera_t* app_camera_create(const app_cmd_svc_t* svc)
 {
     app_camera_t* camera = (app_camera_t*)calloc(1, sizeof(app_camera_t));
     if (!camera) return NULL;
 
     camera->rtsp_pid = -1;
+    camera->svc = svc;
+
+    if (svc && svc->register_cmd) {
+        svc->register_cmd(svc->owner, CMD_CAMERA, cmd_handler_camera, camera);
+    }
 
     /* 解析设备节点（rkisp 节点号会漂移，按卡片名查找） */
     if (camera_find_by_card(CAMERA_CARD_MAIN, camera->main_path,
@@ -349,7 +361,8 @@ void app_camera_stop(app_camera_t* camera)
  * @param conn  来源连接
  * @param ctx   app_camera_t* 句柄
  */
-void cmd_handler_camera(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
+static void cmd_handler_camera(const cmd_frame_t* req, cmd_conn_t* conn,
+                               void* ctx)
 {
     app_camera_t* camera = (app_camera_t*)ctx;
 

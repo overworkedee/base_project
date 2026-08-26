@@ -7,14 +7,16 @@
  *   SUB=0x05 (LOG_SUBSCRIBE)     订阅日志推送 → 先回放缓冲区(≤500条)再注册实时推送
  *   SUB=0x06 (LOG_UNSUBSCRIBE)   取消日志订阅
  *
- * ctx 应为 cmd_subscription_mgr_t*（日志订阅需要）。
+ * 解耦设计（回调注入）：
+ *   不直接持有 cmd_subscription_mgr_t*，
+ *   订阅/取消订阅通过 app_cmd_svc_t 能力表（函数指针）完成。
  */
 
 #define _GNU_SOURCE
 #include "app_system.h"
 #include "cmd/cmd_server.h"
 #include "cmd/cmd_protocol.h"
-#include "cmd/cmd_subscription.h"
+#include "cmd/cmd_frame.h"
 #include "log/log.h"
 
 #include <stdlib.h>
@@ -23,18 +25,28 @@
 
 #define APP_VERSION  "1.0.0"
 
+/* ── 内部结构 ───────────────────────────────────────────────────────── */
+
+struct app_system {
+    const app_cmd_svc_t* svc;   /* 命令服务能力表（回调注入） */
+};
+
+/* ── 命令处理器 ─────────────────────────────────────────────────────── */
+
 /**
  * 系统命令处理器（CMD=0x03）。
  *
- * ctx 应为 cmd_subscription_mgr_t*（用于日志订阅，系统信息查询不需要）。
+ * ctx 应为 app_system_t*，内部通过 svc 能力表处理日志订阅。
  *
  * @param req   请求帧
  * @param conn  来源连接
- * @param ctx   cmd_subscription_mgr_t* 句柄
+ * @param ctx   app_system_t* 句柄
  */
-void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
+static void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn,
+                               void* ctx)
 {
-    cmd_subscription_mgr_t* sub_mgr = (cmd_subscription_mgr_t*)ctx;
+    app_system_t* system = (app_system_t*)ctx;
+    const app_cmd_svc_t* svc = system ? system->svc : NULL;
 
     uint8_t op = cmd_frame_sub_req(req->sub);
 
@@ -100,7 +112,7 @@ void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 
     } else if (op == CMD_SUB_LOG_SUBSCRIBE) {
         /* 订阅日志推送: 先推送缓冲日志(最多500条)，再注册实时推送 */
-        if (!sub_mgr) {
+        if (!svc || !svc->subscribe_data) {
             uint8_t err = CMD_ERR_HARDWARE;
             cmd_frame_t rsp = { .cmd = CMD_SYSTEM, .sub = cmd_frame_sub_rsp(req->sub),
                                 .len = 1, .payload = &err };
@@ -108,8 +120,8 @@ void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
             return;
         }
 
-        /* 注册订阅 */
-        cmd_subscription_add(sub_mgr, CMD_DATA_LOG, 0, conn);
+        /* 通过能力表注册订阅 */
+        svc->subscribe_data(svc->owner, CMD_DATA_LOG, 0, conn);
 
         /* 推送已缓存的日志（最多 500 条） */
         log_ring_entry_t entries[500];
@@ -152,8 +164,8 @@ void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 
     } else if (op == CMD_SUB_LOG_UNSUBSCRIBE) {
         /* 取消日志订阅 */
-        if (sub_mgr) {
-            cmd_subscription_remove(sub_mgr, CMD_DATA_LOG, conn);
+        if (svc && svc->unsubscribe_data) {
+            svc->unsubscribe_data(svc->owner, CMD_DATA_LOG, conn);
         }
 
         uint8_t ok = CMD_ERR_OK;
@@ -169,4 +181,39 @@ void cmd_handler_system(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
                             .len = 1, .payload = &err };
         cmd_conn_send(conn, &rsp);
     }
+}
+
+/* ── 生命周期 ───────────────────────────────────────────────────────── */
+
+/**
+ * 创建系统应用模块并注册 CMD_SYSTEM 处理器。
+ *
+ * 内部通过 svc->register_cmd 将 cmd_handler_system 注入调度器。
+ *
+ * @param svc  命令服务能力表（来自 app_cmd_get_svc），可为 NULL
+ * @return     成功返回实例指针，失败返回 NULL
+ */
+app_system_t* app_system_create(const app_cmd_svc_t* svc)
+{
+    app_system_t* system = (app_system_t*)calloc(1, sizeof(app_system_t));
+    if (!system) return NULL;
+
+    system->svc = svc;
+
+    if (svc && svc->register_cmd) {
+        svc->register_cmd(svc->owner, CMD_SYSTEM, cmd_handler_system, system);
+    }
+
+    return system;
+}
+
+/**
+ * 释放系统应用模块。
+ *
+ * @param system  系统应用模块（可为 NULL）
+ */
+void app_system_destroy(app_system_t* system)
+{
+    if (!system) return;
+    free(system);
 }

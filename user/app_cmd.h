@@ -2,25 +2,31 @@
 #define APP_CMD_H
 
 #include <stdint.h>
-#include "cmd/cmd_dispatcher.h"
+#include "app_registry.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* 前向声明 */
-typedef struct app_cmd              app_cmd_t;
-typedef struct cmd_subscription_mgr cmd_subscription_mgr_t;
+typedef struct app_cmd app_cmd_t;
 
 /* ── 生命周期 ─────────────────────────────────────────────────────── */
 
 app_cmd_t* app_cmd_create(void);
 void       app_cmd_destroy(app_cmd_t* cmd);
 
-/* ── 命令注册 ─────────────────────────────────────────────────────── */
+/* ── 服务能力表 ───────────────────────────────────────────────────── */
 
-int app_cmd_register(app_cmd_t* cmd, uint8_t cmd_cls,
-                     cmd_handler_fn handler, void* ctx);
+/**
+ * 获取命令服务能力表（handler 注册 / 数据推送 / 订阅）。
+ *
+ * 各 app 模块通过此表注入回调，避免直接依赖 cmd 内部类型。
+ *
+ * @param cmd  命令模块实例
+ * @return     能力表指针（随 app_cmd_t 生命周期有效），cmd 为 NULL 时返回 NULL
+ */
+const app_cmd_svc_t* app_cmd_get_svc(app_cmd_t* cmd);
 
 /* ── 监听 ─────────────────────────────────────────────────────────── */
 
@@ -31,10 +37,6 @@ int app_cmd_add_listener_tcp(app_cmd_t* cmd, uint16_t port);
 
 int  app_cmd_run(app_cmd_t* cmd);
 void app_cmd_stop(app_cmd_t* cmd);
-
-/* ── 内部对象访问 ─────────────────────────────────────────────────── */
-
-cmd_subscription_mgr_t* app_cmd_get_sub_mgr(app_cmd_t* cmd);
 
 #ifdef __cplusplus
 }

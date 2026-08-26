@@ -76,7 +76,7 @@ hw_err_t some_function(int param1, void* param2)
 - **每个业务功能一个 `app_<feature>.c/.h`**，如 `app_sensor.c`、`app_led.c`。`.h` 只暴露不透明类型（`app_<feature>_t`）和函数声明
 - **`main.c` 只是组装根**：只做 create → register → run（+atexit 清理），不写业务逻辑、不定义业务线程
 - **业务线程/采集循环进 app 文件内部**（static），通过 `app_<feature>_start/stop` 暴露生命周期
-- **命令 handler（`cmd_handler_*`）放在 `user/` 对应 app 文件**，通过 `app_cmd_register` 注入 cmd dispatcher；cmd 模块本身不含任何业务 handler
+- **命令 handler（`cmd_handler_*`）放在 `user/` 对应 app 文件**，通过 `app_cmd_svc_t` 能力表（`user/app_registry.h`）注入 cmd dispatcher——各 app 模块在 `app_<feature>_create()` 内自注册，main 只负责组装；cmd 模块本身不含任何业务 handler
 - **Demo 一律独立可执行文件**（如 `vision_demo.c`），不塞进 `project_app`
 - **新文件必须手动注册**：`user/` 下的 `.c` 加入顶层 `CMakeLists.txt` 的 `add_executable(project_app ...)`
 

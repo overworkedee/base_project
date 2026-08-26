@@ -2,14 +2,15 @@
  * main.c — 应用组装根（composition root）
  *
  * 只负责三件事：
- *   1. 初始化各模块（log / hw / cmd / app_sensor）
- *   2. 注册命令处理器与监听
+ *   1. 初始化各模块（log / hw / app_cmd / 各 app_*）
+ *   2. 通过 app_cmd_svc 能力表将命令服务注入各 app 模块
+ *      （各 app 模块内部自行注册 handler，main 不感知具体 handler）
  *   3. 进入命令服务器事件循环
  *
  * 业务逻辑（采集线程、命令处理）均在各 app_*.c 中，
- * 扩展新功能无需修改本文件，只需：
+ * 扩展新功能只需：
  *   - 新增 app_<feature>.c/.h
- *   - 在 main 中 create/register（各一行）
+ *   - main 中 create（一行）+ cleanup 中 destroy（一行）
  */
 
 #include "log/log.h"
@@ -19,10 +20,11 @@
 #include "app_sensor.h"
 #include "app_system.h"
 #include "app_camera.h"
+#include "app_registry.h"
 #include "hw/dev/dev_sht30.h"
 #include "hw/dev/dev_led.h"
 #include "cmd/cmd_transport.h"
-#include "cmd/cmd_subscription.h"
+#include "cmd/cmd_frame.h"
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -40,23 +42,26 @@ static led_t*          g_led    = NULL;
 static app_cmd_t*      g_cmd    = NULL;
 static app_sensor_t*   g_sensor = NULL;
 static app_camera_t*   g_camera = NULL;
+static app_led_t*      g_appled = NULL;
+static app_system_t*   g_system = NULL;
 
 /* ── 日志推送回调 ─────────────────────────────────────────────────── */
 
 /**
- * log 模块回调：将每条日志通过订阅管理器推送给上位机。
+ * log 模块回调：将每条日志通过能力表推送给上位机订阅者。
  *
- * 构造 CMD_DATA_LOG 推送帧数据并调用 cmd_subscription_push。
+ * 通过 app_cmd_svc_t.publish_data 完成推送，
+ * 不直接依赖 cmd 内部订阅管理器类型。
  *
  * @param level  日志等级
  * @param msg    格式化日志消息
- * @param ctx    订阅管理器指针
+ * @param ctx    回调上下文（app_cmd_svc_t*）
  * @note         在 log_write_impl 持有锁时调用，不得调用 LOG_* 宏
  */
 static void on_log_push(uint8_t level, const char* msg, void* ctx)
 {
-    cmd_subscription_mgr_t* sub_mgr = (cmd_subscription_mgr_t*)ctx;
-    if (!sub_mgr || !msg) return;
+    const app_cmd_svc_t* svc = (const app_cmd_svc_t*)ctx;
+    if (!svc || !svc->publish_data || !msg) return;
 
     /* 构造推送数据: [level 1B, reserved 1B, timestamp 4B LE, msg N B] */
     uint32_t ts = (uint32_t)time(NULL);
@@ -77,7 +82,7 @@ static void on_log_push(uint8_t level, const char* msg, void* ctx)
     memcpy(buf + 2, &ts, 4);  /* LE timestamp */
     memcpy(buf + 6, msg, msg_len);
 
-    cmd_subscription_push(sub_mgr, CMD_SYSTEM, CMD_DATA_LOG, buf, data_len);
+    svc->publish_data(svc->owner, CMD_SYSTEM, CMD_DATA_LOG, buf, data_len);
 
     if (heap_buf) free(heap_buf);
 }
@@ -88,9 +93,9 @@ static void on_log_push(uint8_t level, const char* msg, void* ctx)
  * 进程退出时的统一清理（atexit 触发）。
  *
  * 关键顺序：
- *   1. 停止并销毁传感器模块 ← 其采集线程持有 sub_mgr，必须先退出
- *   2. 注销日志回调         ← 阻止 on_log_push 访问已释放的 sub_mgr
- *   3. 销毁 cmd 模块        ← 释放 sub_mgr/server/dispatcher
+ *   1. 停止并销毁各 app 模块 ← 采集线程持有 svc（指向 g_cmd 内部），必须先退出
+ *   2. 注销日志回调         ← 阻止 on_log_push 访问已释放的 svc
+ *   3. 销毁 cmd 模块        ← 释放 server/dispatcher/sub_mgr
  *   4. 关闭硬件             ← led_close/sht30_close 可能调用 LOG_*
  *   5. 关闭日志模块         ← log_deinit 内部调用 LOG_INFO
  */
@@ -108,6 +113,16 @@ static void cleanup(void)
         app_camera_stop(g_camera);
         app_camera_destroy(g_camera);
         g_camera = NULL;
+    }
+
+    if (g_appled) {
+        app_led_destroy(g_appled);
+        g_appled = NULL;
+    }
+
+    if (g_system) {
+        app_system_destroy(g_system);
+        g_system = NULL;
     }
 
     log_set_subscribe_callback(NULL, NULL);
@@ -149,10 +164,11 @@ int main(int argc, char *argv[])
     /* 初始化硬件 */
     g_sht30 = sht30_open(SHT30_SYSFS_PATH);
     if (!g_sht30) {
-        LOG_ERROR("Failed to open SHT30 sensor");
-        return 1;
+        /* 传感器缺失不影响主流程：sensor 模块会跳过采集，命令返回 HW_ERR */
+        LOG_WARN("Failed to open SHT30 sensor, sensor commands unavailable");
+    } else {
+        LOG_INFO("SHT30 sensor initialized at %s", SHT30_SYSFS_PATH);
     }
-    LOG_INFO("SHT30 sensor initialized at %s", SHT30_SYSFS_PATH);
 
     g_led = led_open(LED_NAME);
     if (!g_led) {
@@ -161,31 +177,27 @@ int main(int argc, char *argv[])
         LOG_INFO("LED '%s' initialized", LED_NAME);
     }
 
-    /* 初始化命令模块 */
+    /* 初始化命令模块（能力表 owner） */
     g_cmd = app_cmd_create();
     if (!g_cmd) {
         LOG_ERROR("Failed to create command module");
         return 1;
     }
 
-    /* 注册命令处理器（扩展新功能只需增加一行） */
-    app_cmd_register(g_cmd, CMD_LED,    cmd_handler_led,    g_led);
-    g_sensor = app_sensor_create(g_sht30, app_cmd_get_sub_mgr(g_cmd));
-    if (!g_sensor) {
-        LOG_ERROR("Failed to create sensor module");
-        return 1;
-    }
-    app_cmd_register(g_cmd, CMD_SENSOR, cmd_handler_sensor, g_sensor);
-    app_cmd_register(g_cmd, CMD_SYSTEM, cmd_handler_system, app_cmd_get_sub_mgr(g_cmd));
-    g_camera = app_camera_create();
-    if (!g_camera) {
-        LOG_ERROR("Failed to create camera module");
-        return 1;
-    }
-    app_cmd_register(g_cmd, CMD_CAMERA, cmd_handler_camera, g_camera);
+    const app_cmd_svc_t* svc = app_cmd_get_svc(g_cmd);
 
-    /* 注册日志推送回调（必须在 app_cmd_create 之后，需要 sub_mgr） */
-    log_set_subscribe_callback(on_log_push, app_cmd_get_sub_mgr(g_cmd));
+    /* 创建各 app 模块（内部自动注册各自的命令 handler） */
+    g_appled = app_led_create(g_led, svc);
+    g_sensor = app_sensor_create(g_sht30, svc);
+    g_system = app_system_create(svc);
+    g_camera = app_camera_create(svc);
+    if (!g_appled || !g_sensor || !g_system || !g_camera) {
+        LOG_ERROR("Failed to create app modules");
+        return 1;
+    }
+
+    /* 注册日志推送回调（通过能力表推送，svc 随 g_cmd 生命周期有效） */
+    log_set_subscribe_callback(on_log_push, (void*)svc);
 
     /* 添加监听 */
     app_cmd_add_listener_unix(g_cmd, CMD_DEFAULT_UNIX_SOCK_PATH);
@@ -197,7 +209,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* 启动相机采集线程 */
+    /* 启动相机监控线程（自动拉起 RTSP 推流） */
     if (app_camera_start(g_camera) != 0) {
         LOG_ERROR("Failed to start camera thread");
         return 1;

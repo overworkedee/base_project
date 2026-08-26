@@ -1,15 +1,19 @@
 #ifndef APP_LED_H
 #define APP_LED_H
 
-#include "cmd/cmd_dispatcher.h"
+#include "app_registry.h"
+#include "hw/dev/dev_led.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* ── 命令处理器（供 app_cmd_register 注册） ──────────────────────── */
+/* ── 生命周期 ─────────────────────────────────────────────────────── */
 
-void cmd_handler_led(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx);
+typedef struct app_led app_led_t;
+
+app_led_t* app_led_create(led_t* led, const app_cmd_svc_t* svc);
+void app_led_destroy(app_led_t* app);
 
 #ifdef __cplusplus
 }

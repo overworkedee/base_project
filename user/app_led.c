@@ -1,26 +1,37 @@
 /**
- * app_led.c — LED 命令处理器
+ * app_led.c — LED 应用模块
  *
  * 处理 CMD=0x01:
  *   SUB=0x01 写: PAYLOAD=[led_id 1B, state 1B]  → 调用 led_on/led_off
  *   SUB=0x02 读: PAYLOAD=[led_id 1B]            → 读取 brightness，返回 [led_id, state]
  *
- * 通过 void* ctx 获取 led_t* 硬件句柄（由 main.c 注册时注入）。
+ * 解耦设计（回调注入）：
+ *   通过 app_cmd_svc_t 能力表注册 CMD_LED handler，
+ *   不直接依赖 cmd 内部类型。
  */
 
 #define _GNU_SOURCE
 #include "app_led.h"
 #include "cmd/cmd_server.h"
 #include "cmd/cmd_protocol.h"
-#include "hw/dev/dev_led.h"
+#include "cmd/cmd_frame.h"
 #include "log/log.h"
 
+#include <stdlib.h>
 #include <string.h>
+
+/* ── 内部结构 ───────────────────────────────────────────────────────── */
+
+struct app_led {
+    led_t* led;     /* LED 硬件句柄 */
+};
+
+/* ── 命令处理器 ─────────────────────────────────────────────────────── */
 
 /**
  * LED 命令处理器（CMD=0x01）。
  *
- * ctx 应为 led_t* 硬件句柄（可为 NULL，此时所有操作返回 CMD_ERR_HARDWARE）。
+ * ctx 应为 app_led_t*。
  *
  * 子命令:
  *   WRITE(0x01): PAYLOAD=[led_id 1B, state 1B]  0=关 1=开 → 调用 led_on/led_off
@@ -28,11 +39,13 @@
  *
  * @param req   请求帧
  * @param conn  来源连接
- * @param ctx   led_t* 句柄
+ * @param ctx   app_led_t* 句柄
  */
-void cmd_handler_led(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
+static void cmd_handler_led(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
 {
-    led_t* led = (led_t*)ctx;
+    app_led_t* app = (app_led_t*)ctx;
+    led_t* led = app ? app->led : NULL;
+
     if (!led) {
         /* 无 LED 硬件，返回错误 */
         uint8_t err = CMD_ERR_HARDWARE;
@@ -107,4 +120,40 @@ void cmd_handler_led(const cmd_frame_t* req, cmd_conn_t* conn, void* ctx)
                             .len = 1, .payload = &err };
         cmd_conn_send(conn, &rsp);
     }
+}
+
+/* ── 生命周期 ───────────────────────────────────────────────────────── */
+
+/**
+ * 创建 LED 应用模块并注册 CMD_LED 处理器。
+ *
+ * 内部通过 svc->register_cmd 将 cmd_handler_led 注入调度器。
+ *
+ * @param led  LED 硬件句柄（可为 NULL，此时命令返回 CMD_ERR_HARDWARE）
+ * @param svc  命令服务能力表（来自 app_cmd_get_svc），可为 NULL
+ * @return     成功返回实例指针，失败返回 NULL
+ */
+app_led_t* app_led_create(led_t* led, const app_cmd_svc_t* svc)
+{
+    app_led_t* app = (app_led_t*)calloc(1, sizeof(app_led_t));
+    if (!app) return NULL;
+
+    app->led = led;
+
+    if (svc && svc->register_cmd) {
+        svc->register_cmd(svc->owner, CMD_LED, cmd_handler_led, app);
+    }
+
+    return app;
+}
+
+/**
+ * 释放 LED 应用模块。
+ *
+ * @param app  LED 应用模块（可为 NULL）
+ */
+void app_led_destroy(app_led_t* app)
+{
+    if (!app) return;
+    free(app);
 }
