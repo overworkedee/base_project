@@ -114,6 +114,8 @@ Add `.c` files to `user/` and list them in `CMakeLists.txt` under `add_executabl
 - **Demo 一律独立可执行文件**（如 `vision_demo.c`），不塞进 `project_app`
 - **新文件必须手动注册**：`user/` 下的 `.c` 加入顶层 `CMakeLists.txt` 的 `add_executable(project_app ...)`
 
+**注册机制原理详见 [docs/registry.md](docs/registry.md)**（能力表结构、注册时序、推送流程、清理顺序、扩展示例）。
+
 ## 日志规范
 
 所有 `LOG_DEBUG/INFO/WARN/ERROR` 消息**必须使用英文**，禁止中文。日志可能被远程采集、监控系统解析，中文在嵌入式环境容易乱码。

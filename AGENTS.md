@@ -80,6 +80,8 @@ hw_err_t some_function(int param1, void* param2)
 - **Demo 一律独立可执行文件**（如 `vision_demo.c`），不塞进 `project_app`
 - **新文件必须手动注册**：`user/` 下的 `.c` 加入顶层 `CMakeLists.txt` 的 `add_executable(project_app ...)`
 
+**注册机制原理详见 [docs/registry.md](docs/registry.md)**（能力表结构、注册时序、推送流程、清理顺序、扩展示例）。
+
 ## Module Documentation
 
 **每新增一个模块，必须在 `docs/` 下创建对应的 `.md` 指南文件**，记录：
